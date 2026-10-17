@@ -1,0 +1,119 @@
+.notification-trigger > svg {
+  width: 19px;
+  height: 19px;
+  fill: none;
+  stroke: currentColor;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 1.8;
+}
+
+.live-sidebar nav a {
+  grid-template-columns: minmax(0, 1fr);
+  gap: 0;
+  padding: 0.65rem 0.8rem;
+}
+
+.role-context-nav {
+  display: flex;
+  min-width: 0;
+  overflow-x: auto;
+  border-bottom: 1px solid #d9e0dd;
+  background: #fff;
+  padding: 0 1.25rem;
+  scrollbar-color: #81938e #edf1f0;
+  -webkit-overflow-scrolling: touch;
+}
+
+.role-context-nav a {
+  display: grid;
+  min-height: 48px;
+  flex: 0 0 auto;
+  place-items: center;
+  border-bottom: 3px solid transparent;
+  padding: 0.65rem 0.9rem;
+  color: #52635f;
+  font-size: 0.82rem;
+  font-weight: 750;
+  white-space: nowrap;
+}
+
+.role-context-nav a:hover {
+  background: #f3f6f5;
+  color: #183e37;
+}
+
+.role-context-nav a.active {
+  border-bottom-color: #bd743f;
+  color: #173f37;
+}
+
+.role-context-nav + .live-content {
+  min-height: calc(100vh - 116px);
+}
+
+@media (max-width: 880px) {
+  .role-context-nav {
+    padding: 0 0.75rem;
+  }
+}
+
+.simplified-role-workspace .live-content small {
+  font-size: 0.8rem;
+  line-height: 1.35;
+}
+
+.simplified-role-workspace .live-content .lav-kicker,
+.simplified-role-workspace .live-content label > span,
+.simplified-role-workspace .live-content dt,
+.simplified-role-workspace .live-content .lav-request-context span,
+.simplified-role-workspace .live-content .position-register header > div > span,
+.simplified-role-workspace .live-content .period-facts > span,
+.simplified-role-workspace .live-content .ops-stock-grid article > span,
+.simplified-role-workspace .live-content .technical-delivery-facts small {
+  font-size: 0.8rem;
+}
+
+.simplified-role-workspace .live-content .lav-status,
+.simplified-role-workspace .live-content .ops-status,
+.simplified-role-workspace .live-content .governance-status,
+.simplified-role-workspace .live-content .technical-decision {
+  font-size: 0.76rem;
+}
+
+.simplified-role-workspace .live-content .ops-row {
+  font-size: 0.86rem;
+}
+
+.simplified-role-workspace .live-content .ops-row.head {
+  font-size: 0.78rem;
+}
+
+.simplified-role-workspace .live-content .ops-stock-grid p,
+.simplified-role-workspace .live-content .ops-issue-grid p,
+.simplified-role-workspace .live-content .ops-invoice-grid p,
+.simplified-role-workspace .live-content .ops-timeline span,
+.simplified-role-workspace .live-content .ops-timeline time,
+.simplified-role-workspace .live-content .ops-timeline small,
+.simplified-role-workspace .live-content .technical-delivery-list article > footer,
+.simplified-role-workspace .live-content .petty-cash-facts > span {
+  font-size: 0.8rem;
+}
+
+.simplified-role-workspace .live-content .lav-project-percent,
+.simplified-role-workspace .live-content .lav-project-facts span,
+.simplified-role-workspace .live-content .lav-progress-note span,
+.simplified-role-workspace .live-content .lav-request-id > span,
+.simplified-role-workspace .live-content .lav-request-id > small,
+.simplified-role-workspace .live-content .lav-purchase-facts span,
+.simplified-role-workspace .live-content .supplier-page-head > div:last-child span,
+.simplified-role-workspace .live-content .supplier-request-card > header > div > span,
+.simplified-role-workspace .live-content .supplier-request-card header p,
+.simplified-role-workspace .live-content .supplier-request-card dt,
+.simplified-role-workspace .live-content .supplier-request-card dd,
+.simplified-role-workspace .live-content .supplier-request-audit,
+.simplified-role-workspace .live-content .supplier-decision-record,
+.simplified-role-workspace .live-content .supplier-review-actions > span,
+.simplified-role-workspace .live-content .approved-supplier-list article > div:nth-child(2) > span {
+  font-size: 0.8rem;
+}

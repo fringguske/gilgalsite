@@ -1,0 +1,6 @@
+<Solution>
+  <Project Path="ConstructionMS.Api/ConstructionMS.Api.csproj" />
+  <Project Path="ConstructionMS.Application/ConstructionMS.Application.csproj" />
+  <Project Path="ConstructionMS.Domain/ConstructionMS.Domain.csproj" />
+  <Project Path="ConstructionMS.Infrastructure/ConstructionMS.Infrastructure.csproj" />
+</Solution>

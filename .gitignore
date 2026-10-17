@@ -1,0 +1,29 @@
+# Build output
+bin/
+obj/
+node_modules/
+.next/
+dist/
+*.tsbuildinfo
+next-env.d.ts
+.vercel/
+
+# Local environment and data
+.env
+.env.local
+.env.*.local
+App_Data/
+
+# Editor / OS
+.vs/
+.idea/
+.vscode/
+*.user
+.DS_Store
+
+# Not published
+README.md
+docs/api-map.md
+docs/production-database-rollout.md
+constructionms-app/CLAUDE.md
+constructionms-app/AGENTS.md

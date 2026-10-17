@@ -1,0 +1,31 @@
+.governance-toolbar{display:flex;align-items:flex-end;gap:1rem;border:1px solid #d9e1e3;background:#fff;padding:.75rem 1rem}
+.governance-toolbar label{display:grid;gap:.3rem}
+.governance-toolbar label>span{color:#52636c;font-size:.78rem;font-weight:750}
+.governance-toolbar select{min-width:220px;height:40px;border:1px solid #cbd4db;background:#fff;padding:0 .65rem;font:inherit}
+.governance-toolbar .governance-check{display:flex;align-items:center;gap:.45rem;min-height:40px}
+.governance-toolbar .governance-check input{width:18px;height:18px}
+.position-lines{display:flex;flex-wrap:wrap;gap:.5rem}
+.position-lines>div{display:grid;gap:.15rem;border-left:3px solid #466b62;background:#f3f6f5;padding:.55rem .7rem}
+.position-lines strong{font-size:.88rem}
+.position-lines span{color:#687780;font-size:.75rem}
+.section-register-title{display:flex;align-items:center;justify-content:space-between;padding:.75rem 1rem;border:1px solid #d9e1e3;background:#f4f7f6}
+.section-register-title h2{margin:0;font-size:1.02rem}
+.section-register-title span{font-weight:800}
+.record-evidence{display:grid;justify-items:start;gap:.5rem}
+.record-evidence>.evidence-field{width:100%}
+.record-evidence-register{border:1px solid #d9e1e3;background:#fff}
+.record-evidence-register>summary{padding:.75rem 1rem;cursor:pointer;font-weight:800}
+.record-evidence-register>div{display:grid;border-top:1px solid #d9e1e3}
+.record-evidence-register article{display:grid;grid-template-columns:minmax(180px,1fr) minmax(240px,2fr) minmax(240px,2fr);align-items:start;gap:.7rem;padding:.75rem 1rem;border-bottom:1px solid #e3e8ea}
+.record-evidence-register article:last-child{border-bottom:0}
+.record-evidence-register strong{font-size:.82rem}
+.governance-evidence-result{display:flex;align-items:center;justify-content:space-between;gap:1rem;padding:.8rem 1rem}
+.governance-evidence-result>div:first-child{display:grid;gap:.2rem}
+.governance-evidence-result>div:first-child span{color:#5d6f68;font-size:.8rem}
+
+@media(max-width:760px){
+  .governance-toolbar{align-items:stretch;flex-direction:column}
+  .governance-toolbar select{min-width:0;width:100%}
+  .record-evidence-register article{grid-template-columns:1fr}
+  .governance-evidence-result{align-items:stretch;flex-direction:column}
+}

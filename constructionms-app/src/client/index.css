@@ -1,0 +1,55 @@
+@import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap');
+@import "tailwindcss";
+
+:root {
+  --color-base: #FFFFFF;
+  --color-surface: #F7F8FA;
+  --color-ink: #1C2430;
+  --color-primary: #1D4E89;
+  --color-accent: #E8853D;
+  --color-success: #2F8A5B;
+  --color-border: #E2E5EA;
+
+  --font-display: "Space Grotesk", sans-serif;
+  --font-body: "Inter", sans-serif;
+  --font-mono: "IBM Plex Mono", monospace;
+
+  font-family: var(--font-body);
+  color: var(--color-ink);
+  background: var(--color-base);
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+
+  /* Compatibility aliases used by the application shell. */
+  --ink: var(--color-ink);
+  --muted: #69726e;
+  --line: var(--color-border);
+  --paper: var(--color-base);
+  --canvas: var(--color-surface);
+  --navy: var(--color-primary);
+  --green: var(--color-success);
+  --orange: var(--color-accent);
+  --red: #a94b43;
+}
+
+* { box-sizing: border-box; }
+html { min-width: 320px; background: var(--canvas); }
+body {
+  margin: 0;
+  min-width: 320px;
+  min-height: 100vh;
+  background-color: var(--color-base);
+  color: var(--color-ink);
+  font-family: var(--font-body);
+}
+h1, h2, h3 { font-family: var(--font-display); }
+.mono { font-family: var(--font-mono); }
+button, input, select, textarea { font: inherit; }
+button, select { cursor: pointer; }
+button { color: inherit; }
+button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-visible {
+  outline: 3px solid rgba(35, 91, 117, .22);
+  outline-offset: 2px;
+}
+a { color: inherit; text-decoration: none; }
+svg { flex: 0 0 auto; }

@@ -1,0 +1,43 @@
+{
+  "name": "constructionms-app",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "engines": {
+    "node": ">=20.9"
+  },
+  "scripts": {
+    "dev": "next dev --port 5100",
+    "build": "next build",
+    "start": "next start --port 5100",
+    "typecheck": "tsc --noEmit",
+    "db:pull": "drizzle-kit pull",
+    "bootstrap-administrator": "tsx scripts/bootstrap-administrator.ts",
+    "reset-administrator-password": "tsx scripts/reset-administrator-password.ts"
+  },
+  "dependencies": {
+    "@supabase/supabase-js": "^2.117.2",
+    "bcryptjs": "^3.0.3",
+    "decimal.js": "^10.6.0",
+    "drizzle-orm": "^0.45.3",
+    "jose": "^6.2.12",
+    "next": "^16.3.8",
+    "postgres": "^3.4.9",
+    "react": "^19.3.0",
+    "react-dom": "^19.3.0",
+    "react-router": "^8.3.0",
+    "zod": "^4.6.5"
+  },
+  "devDependencies": {
+    "@tailwindcss/postcss": "^4.3.3",
+    "@types/node": "^22.20.5",
+    "@types/pg": "^8.23.1",
+    "@types/react": "^19.3.0",
+    "@types/react-dom": "^19.2.3",
+    "drizzle-kit": "^0.31.11",
+    "pg": "^8.23.1",
+    "tailwindcss": "^4.3.3",
+    "tsx": "^4.23.15",
+    "typescript": "^5.9.3"
+  }
+}

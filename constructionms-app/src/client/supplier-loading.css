@@ -1,0 +1,28 @@
+.supplier-loading {
+  display: grid;
+  min-height: 180px;
+  place-items: center;
+  align-content: center;
+  padding: 30px;
+  text-align: center;
+}
+
+.supplier-loading > span {
+  width: 27px;
+  height: 27px;
+  border: 3px solid #dce5e1;
+  border-top-color: #285f50;
+  animation: supplier-spin 0.75s linear infinite;
+}
+
+.supplier-loading p {
+  margin: 10px 0 0;
+  color: #65736d;
+  font-size: 12px;
+}
+
+@keyframes supplier-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
