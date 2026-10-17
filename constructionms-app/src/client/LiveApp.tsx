@@ -27,6 +27,7 @@ const LiveTechnicalAcceptanceView = lazy(() => import('./LiveOperationsViews').t
 const LiveFinanceView = lazy(() => import('./LiveOperationsViews').then(module => ({ default: module.LiveFinanceView })))
 const LivePettyCashView = lazy(() => import('./LiveOperationsViews').then(module => ({ default: module.LivePettyCashView })))
 const LiveAuditView = lazy(() => import('./LiveOperationsViews').then(module => ({ default: module.LiveAuditView })))
+const LiveCashBookView = lazy(() => import('./LiveOperationsViews').then(module => ({ default: module.LiveCashBookView })))
 const MyTasksView = lazy(() => import('./LiveGovernanceViews').then(module => ({ default: module.MyTasksView })))
 const OpeningPositionsView = lazy(() => import('./LiveGovernanceViews').then(module => ({ default: module.OpeningPositionsView })))
 const CustodyCloseoutView = lazy(() => import('./LiveGovernanceViews').then(module => ({ default: module.CustodyCloseoutView })))
@@ -84,6 +85,7 @@ const roleNavigation: Record<ConstructionRole, readonly NavItem[]> = {
     { to: '/suppliers', label: 'Suppliers', glyph: 'SU' },
     { to: '/finance', label: 'Supplier payments', glyph: 'IN', activePaths: ['/purchase-orders', '/inventory'] },
     { to: '/petty-cash', label: 'Petty cash', glyph: 'PC' },
+    { to: '/cash-book', label: 'Cash book', glyph: 'CB' },
     { to: '/projects', label: 'Finance controls', glyph: 'PR', activePaths: ['/opening-positions', '/period-close'] },
   ],
   Auditor: [
@@ -496,6 +498,7 @@ function Shell({ currentUser, onLogout, onRoleChanged, onCredentialsChanged }: {
         <Route path="/delivery-checks" element={canAccess('/delivery-checks') ? <LiveTechnicalAcceptanceView currentUser={currentUser}/> : <AccessRestricted role={currentUser.role}/>}/>
         <Route path="/finance" element={canAccess('/finance') ? <LiveFinanceView currentUser={currentUser}/> : <AccessRestricted role={currentUser.role}/>}/>
         <Route path="/petty-cash" element={canAccess('/petty-cash') ? <LivePettyCashView currentUser={currentUser}/> : <AccessRestricted role={currentUser.role}/>}/>
+        <Route path="/cash-book" element={canAccess('/cash-book') ? <LiveCashBookView/> : <AccessRestricted role={currentUser.role}/>}/>
         <Route path="/opening-positions" element={canAccess('/opening-positions') ? <OpeningPositionsView currentUser={currentUser}/> : <AccessRestricted role={currentUser.role}/>}/>
         <Route path="/custody-close-out" element={canAccess('/custody-close-out') ? <CustodyCloseoutView currentUser={currentUser}/> : <AccessRestricted role={currentUser.role}/>}/>
         <Route path="/period-close" element={canAccess('/period-close') ? <PeriodClosingView currentUser={currentUser}/> : <AccessRestricted role={currentUser.role}/>}/>

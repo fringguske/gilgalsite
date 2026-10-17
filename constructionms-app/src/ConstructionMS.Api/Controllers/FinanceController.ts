@@ -119,7 +119,7 @@ export const FinanceController: ControllerMetadata<FinanceControllerImpl> = {
     { method: 'GET', template: 'authorizations', roles: ['Supervisor', 'Finance Officer', 'CEO', 'Auditor'], handler: c => c.getAuthorizations() },
     { method: 'POST', template: 'authorizations/{id:long}/pay', roles: ['Finance Officer'], handler: c => c.pay() },
     { method: 'GET', template: 'payments', roles: ['Supervisor', 'Finance Officer', 'CEO', 'Auditor'], handler: c => c.getPayments() },
-    { method: 'GET', template: 'cash-book', roles: ['CEO', 'Auditor'], handler: c => c.getCashBook() },
+    { method: 'GET', template: 'cash-book', roles: ['CEO', 'Auditor', 'Finance Officer'], handler: c => c.getCashBook() },
     { method: 'GET', template: 'control-events', roles: ['CEO', 'Auditor'], handler: c => c.getControlEvents() },
   ],
 }

@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto'
-import { and, asc, count, desc, eq, exists, inArray, isNotNull, not, sql, type SQL } from 'drizzle-orm'
+import { and, asc, count, desc, eq, exists, inArray, isNotNull, not, sql, type AnyColumn, type SQL } from 'drizzle-orm'
 import { alias } from 'drizzle-orm/pg-core'
 import {
   ArgumentError,
@@ -545,11 +545,13 @@ export class FinanceWorkflowService implements IFinanceWorkflowService {
   }
 
   async getCashBookAsync(actorUserId: number, actorRole: string): Promise<CashBookResponseDto> {
-    await this.requireAnyRoleAsync(actorUserId, actorRole, 'CEO', 'Auditor')
+    await this.requireAnyRoleAsync(actorUserId, actorRole, 'CEO', 'Auditor', 'Finance Officer')
 
+    // CEO and Auditor see every project; a Finance Officer sees only assigned projects.
     const projectRows = await this.db
       .select({ id: projects.id, name: projects.name, budget: projects.budget })
       .from(projects)
+      .where(await this.projectScope(actorUserId, actorRole, projects.id))
       .orderBy(asc(projects.id))
     const projectIds = projectRows.map(item => item.id)
     if (projectIds.length === 0) {
@@ -1039,7 +1041,7 @@ export class FinanceWorkflowService implements IFinanceWorkflowService {
   private async projectScope(
     actorUserId: number,
     actorRole: string,
-    projectColumn: typeof supplierInvoices.projectId,
+    projectColumn: AnyColumn,
   ): Promise<SQL | undefined> {
     if (actorRole === 'CEO' || actorRole === 'Auditor' || await this.canVerifyAllProjectsAsync(actorUserId)) {
       return undefined

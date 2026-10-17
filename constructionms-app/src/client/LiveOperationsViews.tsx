@@ -654,7 +654,7 @@ export function LiveFinanceView({ currentUser }: { currentUser: CurrentUser }) {
     {showInvoices && <section className="lav-panel ops-panel"><header className="lav-panel-head"><div><h2>{role === 'Supervisor' ? 'Waiting approval' : role === 'Finance Officer' && !showAllInvoiceRecords ? 'Invoices to match' : 'Supplier invoices'}</h2></div>{role === 'Finance Officer' ? <button type="button" className="ops-text-action" onClick={() => { if (showAllInvoiceRecords) { const next = new URLSearchParams(searchParams); next.delete('view'); setSearchParams(next, { replace: true }); setShowAllInvoices(false) } else setShowAllInvoices(true) }}>{showAllInvoiceRecords ? 'Show invoices to match' : 'View all invoices'}</button> : <strong>{invoiceRecords.length} records</strong>}</header>{invoiceRecords.length ? <div className="ops-invoice-grid">{invoiceRecords.map(invoice => <InvoiceCard key={invoice.id} invoice={invoice} technicalAcceptances={technicalAcceptances.filter(item => item.purchaseOrderId === invoice.purchaseOrderId && item.technicalAcceptanceId !== null)} currentUser={currentUser} run={run}/>)}</div> : <Empty>{role === 'Supervisor' ? 'No supplier payment needs approval.' : role === 'Finance Officer' && !showAllInvoiceRecords ? 'No invoice needs matching.' : 'No supplier invoice recorded.'}</Empty>}</section>}
     {role === 'CEO' && financeSection === 'summary' && cashBookLoading && <section className="lav-panel ops-panel"><Loading>Loading cash book…</Loading></section>}
     {role === 'CEO' && financeSection === 'summary' && cashBookError && <section className="lav-panel ops-panel"><Notice tone="error">{cashBookError}</Notice></section>}
-    {role === 'CEO' && financeSection === 'summary' && cashBook && <CeoCashBook cashBook={cashBook}/>}
+    {role === 'CEO' && financeSection === 'summary' && cashBook && <CashBookPanel cashBook={cashBook}/>}
     {role === 'Finance Officer' && financeSection === 'authorized' && <FinancePaymentActions authorizations={authorizations} run={run}/>}
     {showExecutedPayments && <section className="lav-panel ops-panel">
       <header className="lav-panel-head"><div><span className="lav-kicker">PAYMENT PROOF</span><h2>Executed payments</h2></div></header>
@@ -673,7 +673,30 @@ export function LiveFinanceView({ currentUser }: { currentUser: CurrentUser }) {
   </div>
 }
 
-function CeoCashBook({ cashBook }: { cashBook: CashBook }) {
+export function LiveCashBookView() {
+  const [cashBook, setCashBook] = useState<CashBook | null>(null)
+  const [error, setError] = useState<string | null>(null)
+  const [refresh, setRefresh] = useState(0)
+
+  useEffect(() => {
+    const controller = new AbortController()
+    financeApi.cashBook(controller.signal)
+      .then(data => { if (!controller.signal.aborted) { setCashBook(data); setError(null) } })
+      .catch(requestError => { if (!(requestError instanceof DOMException && requestError.name === 'AbortError')) setError(messageOf(requestError)) })
+    return () => controller.abort()
+  }, [refresh])
+
+  return <div className="lav-view ops-view">
+    <header className="lav-page-head"><div><h1>Cash book</h1></div></header>
+    {error && <Notice tone="error">{error} <button type="button" onClick={() => { setError(null); setCashBook(null); setRefresh(value => value + 1) }}>Try again</button></Notice>}
+    {!cashBook && !error && <section className="lav-panel ops-panel"><Loading>Loading cash book…</Loading></section>}
+    {cashBook && (cashBook.projects.length
+      ? <CashBookPanel cashBook={cashBook} title="Assigned projects"/>
+      : <section className="lav-panel ops-panel"><Empty>No project is assigned to you.</Empty></section>)}
+  </div>
+}
+
+function CashBookPanel({ cashBook, title = 'Cash book' }: { cashBook: CashBook; title?: string }) {
   const [openProjectId, setOpenProjectId] = useState<number | null>(null)
   const openProject = cashBook.projects.find(project => project.projectId === openProjectId)
   useEffect(() => {
@@ -689,7 +712,7 @@ function CeoCashBook({ cashBook }: { cashBook: CashBook }) {
   }, [openProjectId])
 
   return <section className="lav-panel ops-panel cashbook-panel">
-    <header className="lav-panel-head"><div><h2>Cash book</h2></div><strong>{cashBook.projects.length} projects</strong></header>
+    <header className="lav-panel-head"><div><h2>{title}</h2></div><strong>{cashBook.projects.length} projects</strong></header>
     <div className="cashbook-table">
       <div className="cashbook-row head"><span>Project</span><span>Allocated budget</span><span>Used</span><span>Committed</span><span>Waiting</span><span>Available</span></div>
       {cashBook.projects.map(project => {
