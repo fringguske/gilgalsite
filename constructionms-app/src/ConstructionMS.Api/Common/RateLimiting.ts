@@ -1,7 +1,7 @@
 import { ClaimTypes } from '@/ConstructionMS.Application/Security/ApplicationClaimTypes'
 import type { HttpContext } from './HttpContext'
 
-export type RateLimitPolicyName = 'login' | 'evidence-upload' | 'verification-code'
+export type RateLimitPolicyName = 'login' | 'evidence-upload' | 'verification-code' | 'password-reset'
 
 interface Policy {
   permitLimit: number
@@ -25,6 +25,12 @@ const policies: Record<RateLimitPolicyName, Policy> = {
     permitLimit: 10,
     windowMs: 10 * 60_000,
     partitionKey: context => context.user?.findFirstValue(ClaimTypes.NameIdentifier) ?? context.remoteIpAddress,
+  },
+  // Anonymous forgotten-password requests; each account also has its own SMS limits in the database.
+  'password-reset': {
+    permitLimit: 10,
+    windowMs: 10 * 60_000,
+    partitionKey: context => context.remoteIpAddress,
   },
 }
 

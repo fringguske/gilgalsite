@@ -1,4 +1,4 @@
-import { and, eq, isNull, ne } from 'drizzle-orm'
+import { and, eq, isNotNull, isNull, ne } from 'drizzle-orm'
 import { compare, hash } from 'bcryptjs'
 import {
   ArgumentError, InvalidOperationError, UnauthorizedAccessError,
@@ -7,7 +7,8 @@ import type { ILogger } from '@/ConstructionMS.Application/Common/Logger'
 import type { ChangePasswordRequestDto } from '@/ConstructionMS.Application/DTOs/Auth/ChangePasswordRequestDto'
 import type { ChangeUsernameRequestDto } from '@/ConstructionMS.Application/DTOs/Auth/ChangeUsernameRequestDto'
 import type {
-  ChangePhoneNumberRequestDto, ConfirmPhoneNumberRequestDto, SendPasswordChangeCodeRequestDto, VerificationCodeSentDto,
+  ChangePhoneNumberRequestDto, ConfirmPhoneNumberRequestDto, ResetPasswordRequestDto, SendPasswordChangeCodeRequestDto,
+  SendPasswordResetCodeRequestDto, VerificationCodeSentDto,
 } from '@/ConstructionMS.Application/DTOs/Auth/PhoneVerificationDtos'
 import type { ICredentialService } from '@/ConstructionMS.Application/Services/Auth/ICredentialService'
 import { PhoneVerificationPurposes } from '@/ConstructionMS.Domain/Entities/PhoneVerificationCode'
@@ -218,6 +219,51 @@ export class CredentialService implements ICredentialService {
     })
   }
 
+  async sendPasswordResetCodeAsync(request: SendPasswordResetCodeRequestDto): Promise<void> {
+    this.phoneVerification.ensureEnabled()
+    const username = InputNormalizer.username(request.username, 'Username')
+    const account = await this.findResettableAccountAsync(username)
+    if (account === null) {
+      this.logger.information('No password reset code was sent: no active account with a confirmed phone number.')
+      return
+    }
+
+    try {
+      await this.phoneVerification.sendCodeAsync(account.user.id, PhoneVerificationPurposes.ResetPassword, account.phoneNumber)
+    } catch (error) {
+      // The limits are per account, so reporting them would confirm the account exists. An earlier code still works.
+      if (error instanceof InvalidOperationError) {
+        this.logger.warning('Password reset code for user {UserId} was not sent.', { UserId: account.user.id }, error)
+        return
+      }
+      throw error
+    }
+  }
+
+  async resetPasswordAsync(request: ResetPasswordRequestDto): Promise<void> {
+    this.phoneVerification.ensureEnabled()
+    const username = InputNormalizer.username(request.username, 'Username')
+    // Checked before the code, so a mistyped confirmation does not use up the code.
+    const newPassword = CredentialService.normalizeNewPassword(request.newPassword, request.confirmNewPassword)
+    const account = await this.findResettableAccountAsync(username)
+    if (account === null) {
+      throw new UnauthorizedAccessError('Request a new verification code.')
+    }
+
+    const sentTo = await this.phoneVerification.consumeCodeAsync(
+      account.user.id, PhoneVerificationPurposes.ResetPassword, request.verificationCode)
+    if (sentTo !== account.phoneNumber) {
+      throw new InvalidOperationError('Your phone number changed after the code was sent. Request a new code.')
+    }
+
+    await this.updatePasswordAsync(
+      account.user,
+      newPassword,
+      SecurityAuditEventTypes.PasswordReset,
+      SecurityAuditSources.SelfService,
+      account.user.id)
+  }
+
   async resetAdministratorPasswordAsync(username: string, newPassword: string): Promise<void> {
     const normalizedUsername = InputNormalizer.username(username, 'username')
     const normalizedPassword = InputNormalizer.password(newPassword, 'newPassword', 12, 72, 72)
@@ -273,6 +319,25 @@ export class CredentialService implements ICredentialService {
         }]),
       ])
     })
+  }
+
+  /**
+   * The code alone replaces the password, so it only goes to a number the person has proven they hold.
+   * An unconfirmed number may have been typed by someone else, e.g. an Administrator editing the account.
+   */
+  private async findResettableAccountAsync(
+    normalizedUsername: string,
+  ): Promise<{ user: User; phoneNumber: string } | null> {
+    const [user] = await this.db
+      .select()
+      .from(users)
+      .where(and(
+        eq(users.normalizedUsername, normalizedUsername),
+        eq(users.isActive, true),
+        isNotNull(users.phoneNumberVerifiedAt)))
+      .limit(1)
+    const phoneNumber = PhoneNumbers.tryNormalize(user?.phoneNumber)
+    return user && phoneNumber ? { user, phoneNumber } : null
   }
 
   private async requireActiveUserAsync(userId: number): Promise<User> {

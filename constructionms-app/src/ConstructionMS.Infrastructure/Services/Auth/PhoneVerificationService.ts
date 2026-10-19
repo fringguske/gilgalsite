@@ -23,6 +23,9 @@ const Messages: Record<PhoneVerificationPurpose, (code: string) => string> = {
     `${code} is your Construction Management System code to change your password. It expires in 10 minutes. Never share it.`,
   VerifyPhoneNumber: code =>
     `${code} is your Construction Management System code to confirm this phone number. It expires in 10 minutes.`,
+  ResetPassword: code =>
+    `${code} is your Construction Management System code to reset your password. It expires in 10 minutes. `
+    + 'If you did not ask for it, tell your Administrator.',
 }
 
 /**
@@ -160,7 +163,7 @@ export class PhoneVerificationService {
 
   private requireSmsSender(): ISmsSender {
     if (this.smsSender === null) {
-      throw new InvalidOperationError('SMS verification is not set up on this server.')
+      throw new InvalidOperationError('SMS codes are not set up on this server yet. Ask your Administrator.')
     }
     return this.smsSender
   }

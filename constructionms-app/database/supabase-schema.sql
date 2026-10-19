@@ -6335,7 +6335,7 @@ CREATE TABLE "PhoneVerificationCodes" (
     "FailedAttempts" integer NOT NULL DEFAULT 0,
     "ConsumedAt" timestamp with time zone,
     CONSTRAINT "PK_PhoneVerificationCodes" PRIMARY KEY ("Id"),
-    CONSTRAINT "CK_PhoneVerificationCodes_Purpose" CHECK ("Purpose" IN ('ChangePassword', 'VerifyPhoneNumber')),
+    CONSTRAINT "CK_PhoneVerificationCodes_Purpose" CHECK ("Purpose" IN ('ChangePassword', 'VerifyPhoneNumber', 'ResetPassword')),
     CONSTRAINT "CK_PhoneVerificationCodes_PhoneNumber" CHECK ("PhoneNumber" ~ '^\+[1-9][0-9]{7,14}$'),
     CONSTRAINT "CK_PhoneVerificationCodes_Expiry" CHECK ("ExpiresAt" > "CreatedAt"),
     CONSTRAINT "CK_PhoneVerificationCodes_FailedAttempts" CHECK ("FailedAttempts" >= 0),
@@ -6346,7 +6346,7 @@ CREATE INDEX "IX_PhoneVerificationCodes_UserId_CreatedAt" ON "PhoneVerificationC
 
 ALTER TABLE "SecurityAuditEvents" DROP CONSTRAINT "CK_SecurityAuditEvents_EventType";
 
-ALTER TABLE "SecurityAuditEvents" ADD CONSTRAINT "CK_SecurityAuditEvents_EventType" CHECK ("EventType" IN ('UsernameChanged', 'PasswordChanged', 'AdministratorPasswordReset', 'UserCreated', 'UserProfileUpdated', 'UserRoleChanged', 'UserActivated', 'UserDeactivated', 'PhoneNumberVerified'));
+ALTER TABLE "SecurityAuditEvents" ADD CONSTRAINT "CK_SecurityAuditEvents_EventType" CHECK ("EventType" IN ('UsernameChanged', 'PasswordChanged', 'AdministratorPasswordReset', 'UserCreated', 'UserProfileUpdated', 'UserRoleChanged', 'UserActivated', 'UserDeactivated', 'PhoneNumberVerified', 'PasswordReset'));
 
 -- =============================================================================
 -- Supabase hardening

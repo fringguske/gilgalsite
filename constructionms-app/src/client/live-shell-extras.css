@@ -173,3 +173,15 @@
     flex-basis: calc(100% - 3rem);
   }
 }
+
+.account-dialog form > button.account-dialog-link {
+  justify-self: start;
+  border: 0;
+  background: none;
+  padding: 0;
+  color: #214e44;
+  font-size: 0.78rem;
+  font-weight: 750;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}

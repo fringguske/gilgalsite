@@ -103,6 +103,17 @@ export interface ConfirmPhoneNumberRequest {
   verificationCode: string
 }
 
+export interface SendPasswordResetCodeRequest {
+  username: string
+}
+
+export interface ResetPasswordRequest {
+  username: string
+  verificationCode: string
+  newPassword: string
+  confirmNewPassword: string
+}
+
 export interface VerificationCodeSent {
   /** Masked, e.g. +254••••••678. */
   sentTo: string

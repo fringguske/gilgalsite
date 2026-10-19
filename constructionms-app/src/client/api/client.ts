@@ -78,7 +78,9 @@ import type {
   ChangePhoneNumberRequest,
   ChangeUsernameRequest,
   ConfirmPhoneNumberRequest,
+  ResetPasswordRequest,
   SendPasswordChangeCodeRequest,
+  SendPasswordResetCodeRequest,
   UpdateUserRequest,
   VerificationCodeSent,
   AppNotification,
@@ -452,6 +454,21 @@ export const authApi = {
 
   confirmPhoneNumber: (payload: ConfirmPhoneNumberRequest, signal?: AbortSignal) =>
     request<CurrentUser>('/auth/phone/verify', {
+      method: 'POST',
+      body: payload,
+      signal,
+    }),
+
+  /** Answers the same whether or not the account exists or has a confirmed number. */
+  sendPasswordResetCode: (payload: SendPasswordResetCodeRequest, signal?: AbortSignal) =>
+    requestWithoutResponse('/auth/password-reset/code', {
+      method: 'POST',
+      body: payload,
+      signal,
+    }),
+
+  resetPassword: (payload: ResetPasswordRequest, signal?: AbortSignal) =>
+    requestWithoutResponse('/auth/password-reset', {
       method: 'POST',
       body: payload,
       signal,

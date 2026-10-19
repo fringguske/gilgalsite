@@ -2,6 +2,8 @@
 export const PhoneVerificationPurposes = Object.freeze({
   ChangePassword: 'ChangePassword',
   VerifyPhoneNumber: 'VerifyPhoneNumber',
+  /** Forgotten password: the code alone authorises a new password, so it only goes to confirmed numbers. */
+  ResetPassword: 'ResetPassword',
 })
 
 export type PhoneVerificationPurpose = typeof PhoneVerificationPurposes[keyof typeof PhoneVerificationPurposes]
