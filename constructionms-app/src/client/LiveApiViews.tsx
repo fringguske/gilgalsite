@@ -373,11 +373,13 @@ export function PublicLandingView({ onSignIn, onRequestAccess }: PublicLandingVi
 
 export function LiveLoginView({ onAuthenticated, onBack, initialMode = 'signin' }: LiveLoginViewProps) {
   const emailId = useId()
+  const phoneNumberId = useId()
   const usernameId = useId()
   const passwordId = useId()
   const confirmPasswordId = useId()
   const [mode, setMode] = useState<'signin' | 'signup'>(initialMode)
   const [email, setEmail] = useState('')
+  const [phoneNumber, setPhoneNumber] = useState('')
   const [username, setUsername] = useState('')
   const [password, setPassword] = useState('')
   const [confirmPassword, setConfirmPassword] = useState('')
@@ -411,7 +413,7 @@ export function LiveLoginView({ onAuthenticated, onBack, initialMode = 'signin' 
           setError('Passwords do not match.')
           return
         }
-        await authApi.register({ email: email.trim(), username: username.trim(), password, confirmPassword })
+        await authApi.register({ email: email.trim(), phoneNumber: phoneNumber.trim(), username: username.trim(), password, confirmPassword })
         setPassword('')
         setConfirmPassword('')
         setMode('signin')
@@ -469,6 +471,24 @@ export function LiveLoginView({ onAuthenticated, onBack, initialMode = 'signin' 
                 placeholder="name@company.co.ke"
                 required
                 autoFocus
+              />
+            </label>
+          )}
+
+          {mode === 'signup' && (
+            <label className="lav-field" htmlFor={phoneNumberId}>
+              <span>Mobile number <small>· password-change codes are sent here by SMS</small></span>
+              <input
+                id={phoneNumberId}
+                type="tel"
+                name="phone"
+                value={phoneNumber}
+                onChange={(event) => setPhoneNumber(event.currentTarget.value)}
+                autoComplete="tel"
+                inputMode="tel"
+                maxLength={30}
+                placeholder="0712 345 678"
+                required
               />
             </label>
           )}

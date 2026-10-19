@@ -11,6 +11,7 @@ import type { UserResponseDto } from '@/ConstructionMS.Application/DTOs/Users/Us
 import type { IUserService } from '@/ConstructionMS.Application/Services/Users/IUserService'
 import { SecurityAuditEventTypes, SecurityAuditSources } from '@/ConstructionMS.Domain/Entities/SecurityAuditEvent'
 import { InputNormalizer } from '../../Common/InputNormalizer'
+import { PhoneNumbers } from '../../Common/PhoneNumbers'
 import { IsolationLevel, type AppDbContext, type DbExecutor } from '../../Data/AppDbContext'
 import { accessRequests, roles, securityAuditEvents, users } from '../../Data/schema'
 import { UsernameReservationLock } from '../Auth/UsernameReservationLock'
@@ -78,7 +79,7 @@ export class UserService implements IUserService {
       }
 
       const fullName = InputNormalizer.requiredText(dto.fullName, 'FullName', 2, 150)
-      const phoneNumber = InputNormalizer.requiredText(dto.phoneNumber, 'PhoneNumber', 1, 30)
+      const phoneNumber = PhoneNumbers.normalize(dto.phoneNumber, 'PhoneNumber')
       const passwordHash = await hash(
         InputNormalizer.password(dto.password, 'Password', 12, 72, 72),
         PasswordWorkFactor)
@@ -152,7 +153,13 @@ export class UserService implements IUserService {
       }
 
       const fullName = InputNormalizer.requiredText(dto.fullName, 'FullName', 2, 150)
-      const phoneNumber = InputNormalizer.requiredText(dto.phoneNumber, 'PhoneNumber', 1, 30)
+      // A new number must be one an SMS can reach, and the person has to prove it again with a code.
+      const phoneNumberInput = InputNormalizer.requiredText(dto.phoneNumber, 'PhoneNumber', 1, 30)
+      const phoneNumber = phoneNumberInput === user.phoneNumber
+        ? user.phoneNumber
+        : PhoneNumbers.normalize(phoneNumberInput, 'PhoneNumber')
+      const phoneNumberChanged = phoneNumber !== user.phoneNumber
+        && phoneNumber !== PhoneNumbers.tryNormalize(user.phoneNumber)
       const profileChanged = user.fullName !== fullName
         || user.username !== username
         || user.email !== email
@@ -160,7 +167,14 @@ export class UserService implements IUserService {
 
       await tx
         .update(users)
-        .set({ fullName, username, email, phoneNumber, roleId: dto.roleId })
+        .set({
+          fullName,
+          username,
+          email,
+          phoneNumber,
+          roleId: dto.roleId,
+          ...(phoneNumberChanged ? { phoneNumberVerifiedAt: null } : {}),
+        })
         .where(eq(users.id, id))
 
       if (profileChanged) {
@@ -274,6 +288,7 @@ function toDto(u: User, roleName: string): UserResponseDto {
     fullName: u.fullName,
     email: u.email,
     phoneNumber: u.phoneNumber,
+    phoneNumberVerified: u.phoneNumberVerifiedAt !== null,
     isActive: u.isActive,
     createdAt: u.createdAt,
     roleId: u.roleId,

@@ -1,4 +1,4 @@
-import { and, eq, ne } from 'drizzle-orm'
+import { and, eq, isNull, ne } from 'drizzle-orm'
 import { compare, hash } from 'bcryptjs'
 import {
   ArgumentError, InvalidOperationError, UnauthorizedAccessError,
@@ -6,12 +6,18 @@ import {
 import type { ILogger } from '@/ConstructionMS.Application/Common/Logger'
 import type { ChangePasswordRequestDto } from '@/ConstructionMS.Application/DTOs/Auth/ChangePasswordRequestDto'
 import type { ChangeUsernameRequestDto } from '@/ConstructionMS.Application/DTOs/Auth/ChangeUsernameRequestDto'
+import type {
+  ChangePhoneNumberRequestDto, ConfirmPhoneNumberRequestDto, SendPasswordChangeCodeRequestDto, VerificationCodeSentDto,
+} from '@/ConstructionMS.Application/DTOs/Auth/PhoneVerificationDtos'
 import type { ICredentialService } from '@/ConstructionMS.Application/Services/Auth/ICredentialService'
+import { PhoneVerificationPurposes } from '@/ConstructionMS.Domain/Entities/PhoneVerificationCode'
 import { SecurityAuditEventTypes, SecurityAuditSources } from '@/ConstructionMS.Domain/Entities/SecurityAuditEvent'
 import { isUniqueViolation } from '../../Common/DatabaseErrors'
 import { InputNormalizer } from '../../Common/InputNormalizer'
+import { PhoneNumbers } from '../../Common/PhoneNumbers'
 import { IsolationLevel, type AppDbContext } from '../../Data/AppDbContext'
 import { accessRequests, roles, securityAuditEvents, users } from '../../Data/schema'
+import type { PhoneVerificationService } from './PhoneVerificationService'
 import { UsernameReservationLock } from './UsernameReservationLock'
 
 type User = typeof users.$inferSelect
@@ -19,6 +25,9 @@ type User = typeof users.$inferSelect
 const PasswordWorkFactor = 12
 const IntMax = 2_147_483_647
 const BcryptHashPattern = /^\$2[abxy]?\$\d{2}\$[./A-Za-z0-9]{53}$/
+// Once a number is proven, only an Administrator can replace it: otherwise anyone who learnt the
+// password could point the account at their own phone and then change the password.
+const VerifiedPhoneNumberLocked = 'Your phone number is already verified. Ask an Administrator to change it.'
 
 function nextCredentialVersion(current: number): number {
   if (current >= IntMax) {
@@ -31,6 +40,7 @@ export class CredentialService implements ICredentialService {
   constructor(
     private readonly db: AppDbContext,
     private readonly logger: ILogger,
+    private readonly phoneVerification: PhoneVerificationService,
   ) {}
 
   async changeUsernameAsync(userId: number, request: ChangeUsernameRequestDto): Promise<void> {
@@ -97,6 +107,25 @@ export class CredentialService implements ICredentialService {
     }
   }
 
+  async sendPasswordChangeCodeAsync(
+    userId: number,
+    request: SendPasswordChangeCodeRequestDto,
+  ): Promise<VerificationCodeSentDto> {
+    this.phoneVerification.ensureEnabled()
+    const currentPassword = InputNormalizer.password(request.currentPassword, 'CurrentPassword', 1, 72, 72)
+    const user = await this.requireActiveUserAsync(userId)
+    if (!await this.currentPasswordMatches(user, currentPassword)) {
+      throw new UnauthorizedAccessError('The current password is incorrect.')
+    }
+
+    const phoneNumber = PhoneNumbers.tryNormalize(user.phoneNumber)
+    if (phoneNumber === null) {
+      throw new InvalidOperationError('Add your phone number before changing your password.')
+    }
+
+    return this.phoneVerification.sendCodeAsync(user.id, PhoneVerificationPurposes.ChangePassword, phoneNumber)
+  }
+
   async changePasswordAsync(userId: number, request: ChangePasswordRequestDto): Promise<void> {
     const currentPassword = InputNormalizer.password(request.currentPassword, 'CurrentPassword', 1, 72, 72)
     const newPassword = CredentialService.normalizeNewPassword(request.newPassword, request.confirmNewPassword)
@@ -118,12 +147,75 @@ export class CredentialService implements ICredentialService {
       throw new ArgumentError('The new password must be different from the current password.', 'NewPassword')
     }
 
+    // While SMS is configured a password change also needs the code texted to the account's phone.
+    let newlyVerifiedPhoneNumber: string | null = null
+    if (this.phoneVerification.enabled) {
+      if (!request.verificationCode) {
+        throw new ArgumentError('Enter the 6-digit code sent to your phone.', 'VerificationCode')
+      }
+      const sentTo = await this.phoneVerification.consumeCodeAsync(
+        user.id, PhoneVerificationPurposes.ChangePassword, request.verificationCode)
+      if (sentTo !== PhoneNumbers.tryNormalize(user.phoneNumber)) {
+        throw new InvalidOperationError('Your phone number changed after the code was sent. Request a new code.')
+      }
+      // Receiving the code proves the number on file, e.g. one entered on the Request access form.
+      newlyVerifiedPhoneNumber = user.phoneNumberVerifiedAt === null ? sentTo : null
+    }
+
     await this.updatePasswordAsync(
       user,
       newPassword,
       SecurityAuditEventTypes.PasswordChanged,
       SecurityAuditSources.SelfService,
-      user.id)
+      user.id,
+      newlyVerifiedPhoneNumber)
+  }
+
+  async startPhoneNumberChangeAsync(
+    userId: number,
+    request: ChangePhoneNumberRequestDto,
+  ): Promise<VerificationCodeSentDto> {
+    this.phoneVerification.ensureEnabled()
+    const phoneNumber = PhoneNumbers.normalize(request.phoneNumber, 'PhoneNumber')
+    const currentPassword = InputNormalizer.password(request.currentPassword, 'CurrentPassword', 1, 72, 72)
+    const user = await this.requireActiveUserAsync(userId)
+    if (!await this.currentPasswordMatches(user, currentPassword)) {
+      throw new UnauthorizedAccessError('The current password is incorrect.')
+    }
+    if (user.phoneNumberVerifiedAt !== null) {
+      throw new InvalidOperationError(VerifiedPhoneNumberLocked)
+    }
+
+    return this.phoneVerification.sendCodeAsync(user.id, PhoneVerificationPurposes.VerifyPhoneNumber, phoneNumber)
+  }
+
+  async confirmPhoneNumberAsync(userId: number, request: ConfirmPhoneNumberRequestDto): Promise<void> {
+    this.phoneVerification.ensureEnabled()
+    const user = await this.requireActiveUserAsync(userId)
+    if (user.phoneNumberVerifiedAt !== null) {
+      throw new InvalidOperationError(VerifiedPhoneNumberLocked)
+    }
+
+    const phoneNumber = await this.phoneVerification.consumeCodeAsync(
+      user.id, PhoneVerificationPurposes.VerifyPhoneNumber, request.verificationCode)
+    const now = new Date()
+    await this.db.transaction(async tx => {
+      const updated = await tx
+        .update(users)
+        .set({ phoneNumber, phoneNumberVerifiedAt: now })
+        .where(and(eq(users.id, user.id), isNull(users.phoneNumberVerifiedAt)))
+        .returning({ id: users.id })
+      if (updated.length === 0) {
+        throw new InvalidOperationError(VerifiedPhoneNumberLocked)
+      }
+      await tx.insert(securityAuditEvents).values({
+        eventType: SecurityAuditEventTypes.PhoneNumberVerified,
+        source: SecurityAuditSources.SelfService,
+        targetUserId: user.id,
+        actorUserId: user.id,
+        occurredAt: now,
+      })
+    })
   }
 
   async resetAdministratorPasswordAsync(username: string, newPassword: string): Promise<void> {
@@ -155,21 +247,44 @@ export class CredentialService implements ICredentialService {
     eventType: string,
     source: string,
     actorUserId: number | null,
+    newlyVerifiedPhoneNumber: string | null = null,
   ): Promise<void> {
     const passwordHash = await hash(newPassword, PasswordWorkFactor)
+    const now = new Date()
     await this.db.transaction(async tx => {
       await tx
         .update(users)
-        .set({ passwordHash, credentialVersion: nextCredentialVersion(user.credentialVersion) })
+        .set({
+          passwordHash,
+          credentialVersion: nextCredentialVersion(user.credentialVersion),
+          ...(newlyVerifiedPhoneNumber === null
+            ? {}
+            : { phoneNumber: newlyVerifiedPhoneNumber, phoneNumberVerifiedAt: now }),
+        })
         .where(eq(users.id, user.id))
-      await tx.insert(securityAuditEvents).values({
-        eventType,
-        source,
-        targetUserId: user.id,
-        actorUserId,
-        occurredAt: new Date(),
-      })
+      await tx.insert(securityAuditEvents).values([
+        { eventType, source, targetUserId: user.id, actorUserId, occurredAt: now },
+        ...(newlyVerifiedPhoneNumber === null ? [] : [{
+          eventType: SecurityAuditEventTypes.PhoneNumberVerified,
+          source,
+          targetUserId: user.id,
+          actorUserId,
+          occurredAt: now,
+        }]),
+      ])
     })
+  }
+
+  private async requireActiveUserAsync(userId: number): Promise<User> {
+    const [user] = await this.db
+      .select()
+      .from(users)
+      .where(and(eq(users.id, userId), eq(users.isActive, true)))
+      .limit(1)
+    if (!user) {
+      throw new UnauthorizedAccessError('The authenticated account is inactive.')
+    }
+    return user
   }
 
   private async currentPasswordMatches(user: User, currentPassword: string): Promise<boolean> {

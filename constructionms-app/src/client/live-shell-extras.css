@@ -117,3 +117,59 @@
 .simplified-role-workspace .live-content .approved-supplier-list article > div:nth-child(2) > span {
   font-size: 0.8rem;
 }
+
+.account-dialog form > p.account-dialog-note {
+  color: #465860;
+  font-size: 0.8rem;
+  line-height: 1.45;
+}
+
+.account-dialog form > p.account-dialog-note strong {
+  color: #1d2d36;
+  white-space: nowrap;
+}
+
+.live-phone-prompt {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  border-bottom: 1px solid #e3d3b8;
+  background: #fbf5ea;
+  padding: 0.6rem 1.25rem;
+  color: #5c4a2c;
+  font-size: 0.8rem;
+}
+
+.live-phone-prompt p {
+  flex: 1;
+  margin: 0;
+  line-height: 1.4;
+}
+
+.live-phone-prompt button {
+  flex: 0 0 auto;
+  min-height: 34px;
+  border: 1px solid #c9b48f;
+  background: transparent;
+  padding: 0 0.7rem;
+  color: #5c4a2c;
+  font-size: 0.76rem;
+  font-weight: 750;
+}
+
+.live-phone-prompt button.primary {
+  border-color: #214e44;
+  background: #214e44;
+  color: #fff;
+}
+
+@media (max-width: 560px) {
+  .live-phone-prompt {
+    flex-wrap: wrap;
+    padding: 0.6rem 0.75rem;
+  }
+
+  .live-phone-prompt p {
+    flex-basis: calc(100% - 3rem);
+  }
+}

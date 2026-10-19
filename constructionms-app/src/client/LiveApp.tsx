@@ -8,6 +8,7 @@ import {
   type AppNotification,
   type ConstructionRole,
   type CurrentUser,
+  type VerificationCodeSent,
 } from './api'
 import type { LiveDestination } from './LiveApiViews'
 import './live-shell.css'
@@ -312,21 +313,70 @@ function UsernameDialog({ username, onClose, onChanged }: { username: string; on
   return <AccountDialog title="Change username" onClose={onClose}><form onSubmit={event => void submit(event)}><label><span>New username</span><input autoFocus required minLength={3} maxLength={64} value={newUsername} onChange={event => setNewUsername(event.currentTarget.value)}/></label><label><span>Current password</span><input type="password" autoComplete="current-password" required value={password} onChange={event => setPassword(event.currentTarget.value)}/></label>{error && <p role="alert">{error}</p>}<footer><button type="button" onClick={onClose}>Cancel</button><button disabled={busy}>{busy ? 'Saving…' : 'Save username'}</button></footer></form></AccountDialog>
 }
 
-function PasswordDialog({ onClose, onChanged }: { onClose: () => void; onChanged: () => void }) {
+function maskPhoneNumber(phoneNumber: string) {
+  return `${phoneNumber.slice(0, 4)}${'•'.repeat(Math.max(phoneNumber.length - 7, 0))}${phoneNumber.slice(-3)}`
+}
+
+function VerificationCodeField({ value, onChange }: { value: string; onChange: (value: string) => void }) {
+  return <label><span>Verification code</span><input autoFocus required inputMode="numeric" autoComplete="one-time-code" pattern="[0-9]{6}" minLength={6} maxLength={6} placeholder="6-digit code" value={value} onChange={event => onChange(event.currentTarget.value.replace(/\D/g, ''))}/></label>
+}
+
+function PasswordDialog({ currentUser, onClose, onChanged, onAddPhone }: { currentUser: CurrentUser; onClose: () => void; onChanged: () => void; onAddPhone: () => void }) {
   const [currentPassword, setCurrentPassword] = useState('')
   const [newPassword, setNewPassword] = useState('')
   const [confirmPassword, setConfirmPassword] = useState('')
+  const [code, setCode] = useState('')
+  const [sent, setSent] = useState<VerificationCodeSent | null>(null)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  async function submit(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault()
-    if (newPassword !== confirmPassword) { setError('The new passwords do not match.'); return }
+  const needsCode = currentUser.smsVerificationEnabled
+  async function sendCode() {
     setBusy(true); setError(null)
-    try { await authApi.changePassword({ currentPassword, newPassword, confirmNewPassword: confirmPassword }); onChanged() }
+    try { setSent(await authApi.sendPasswordChangeCode({ currentPassword })); setCode('') }
     catch (cause) { setError(errorMessage(cause)) }
     finally { setBusy(false) }
   }
-  return <AccountDialog title="Change password" onClose={onClose}><form onSubmit={event => void submit(event)}><label><span>Current password</span><input type="password" autoComplete="current-password" required value={currentPassword} onChange={event => setCurrentPassword(event.currentTarget.value)}/></label><label><span>New password</span><input type="password" autoComplete="new-password" required minLength={12} maxLength={72} value={newPassword} onChange={event => setNewPassword(event.currentTarget.value)}/></label><label><span>Confirm new password</span><input type="password" autoComplete="new-password" required minLength={12} maxLength={72} value={confirmPassword} onChange={event => setConfirmPassword(event.currentTarget.value)}/></label>{error && <p role="alert">{error}</p>}<footer><button type="button" onClick={onClose}>Cancel</button><button disabled={busy}>{busy ? 'Changing…' : 'Change password'}</button></footer></form></AccountDialog>
+  async function submit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault()
+    if (newPassword !== confirmPassword) { setError('The new passwords do not match.'); return }
+    if (needsCode && !sent) { await sendCode(); return }
+    setBusy(true); setError(null)
+    try { await authApi.changePassword({ currentPassword, newPassword, confirmNewPassword: confirmPassword, verificationCode: needsCode ? code : undefined }); onChanged() }
+    catch (cause) { setError(errorMessage(cause)) }
+    finally { setBusy(false) }
+  }
+  if (needsCode && !currentUser.phoneNumber) {
+    return <AccountDialog title="Change password" onClose={onClose}><form onSubmit={event => { event.preventDefault(); onAddPhone() }}><p className="account-dialog-note">Add your mobile number first. Each time you change your password, a code is sent to it by SMS.</p><footer><button type="button" onClick={onClose}>Cancel</button><button>Add phone number</button></footer></form></AccountDialog>
+  }
+  return <AccountDialog title="Change password" onClose={onClose}><form onSubmit={event => void submit(event)}>{sent ? <><p className="account-dialog-note">Enter the code sent to <strong>{sent.sentTo}</strong>. It expires in 10 minutes.</p><VerificationCodeField value={code} onChange={setCode}/></> : <><label><span>Current password</span><input type="password" autoComplete="current-password" required value={currentPassword} onChange={event => setCurrentPassword(event.currentTarget.value)}/></label><label><span>New password</span><input type="password" autoComplete="new-password" required minLength={12} maxLength={72} value={newPassword} onChange={event => setNewPassword(event.currentTarget.value)}/></label><label><span>Confirm new password</span><input type="password" autoComplete="new-password" required minLength={12} maxLength={72} value={confirmPassword} onChange={event => setConfirmPassword(event.currentTarget.value)}/></label>{needsCode && currentUser.phoneNumber && <p className="account-dialog-note">A code will be sent to {maskPhoneNumber(currentUser.phoneNumber)} to confirm the change.</p>}</>}{error && <p role="alert">{error}</p>}<footer><button type="button" onClick={onClose}>Cancel</button>{sent && <button type="button" disabled={busy} onClick={() => void sendCode()}>Resend code</button>}<button disabled={busy}>{busy ? (needsCode && !sent ? 'Sending…' : 'Changing…') : needsCode && !sent ? 'Send code' : 'Change password'}</button></footer></form></AccountDialog>
+}
+
+function PhoneNumberDialog({ currentUser, onClose, onVerified }: { currentUser: CurrentUser; onClose: () => void; onVerified: (user: CurrentUser) => void }) {
+  const [phoneNumber, setPhoneNumber] = useState(currentUser.phoneNumber ?? '')
+  const [password, setPassword] = useState('')
+  const [code, setCode] = useState('')
+  const [sent, setSent] = useState<VerificationCodeSent | null>(null)
+  const [confirmed, setConfirmed] = useState(false)
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  async function sendCode() {
+    setBusy(true); setError(null)
+    try { setSent(await authApi.changePhoneNumber({ phoneNumber: phoneNumber.trim(), currentPassword: password })); setCode('') }
+    catch (cause) { setError(errorMessage(cause)) }
+    finally { setBusy(false) }
+  }
+  async function submit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault()
+    if (!sent) { await sendCode(); return }
+    setBusy(true); setError(null)
+    try { const user = await authApi.confirmPhoneNumber({ verificationCode: code }); setConfirmed(true); onVerified(user) }
+    catch (cause) { setError(errorMessage(cause)) }
+    finally { setBusy(false) }
+  }
+  if (currentUser.phoneNumberVerified && currentUser.phoneNumber) {
+    return <AccountDialog title="Phone number" onClose={onClose}><form onSubmit={event => { event.preventDefault(); onClose() }}><p className="account-dialog-note">{confirmed ? 'Your phone number is confirmed: ' : 'Your verified number is '}<strong>{currentUser.phoneNumber}</strong>. Password-change codes are sent to it.</p><p className="account-dialog-note">If the number needs to change, ask an Administrator.</p><footer><button>Close</button></footer></form></AccountDialog>
+  }
+  return <AccountDialog title={currentUser.phoneNumber ? 'Confirm phone number' : 'Add phone number'} onClose={onClose}><form onSubmit={event => void submit(event)}>{sent ? <><p className="account-dialog-note">Enter the code sent to <strong>{sent.sentTo}</strong>. It expires in 10 minutes.</p><VerificationCodeField value={code} onChange={setCode}/></> : <><p className="account-dialog-note">A code will be sent to this number by SMS to confirm it is yours. You will need a code sent to it whenever you change your password.</p><label><span>Mobile number</span><input autoFocus required type="tel" inputMode="tel" autoComplete="tel" maxLength={30} placeholder="0712 345 678" value={phoneNumber} onChange={event => setPhoneNumber(event.currentTarget.value)}/></label><label><span>Current password</span><input type="password" autoComplete="current-password" required value={password} onChange={event => setPassword(event.currentTarget.value)}/></label></>}{error && <p role="alert">{error}</p>}<footer><button type="button" onClick={onClose}>Cancel</button>{sent && <button type="button" disabled={busy} onClick={() => void sendCode()}>Resend code</button>}<button disabled={busy}>{busy ? (sent ? 'Confirming…' : 'Sending…') : sent ? 'Confirm number' : 'Send code'}</button></footer></form></AccountDialog>
 }
 
 function notificationMessage(item: AppNotification) {
@@ -448,13 +498,15 @@ function RoleContextNavigation({ role, pathname, search }: { role: ConstructionR
   </nav>
 }
 
-function Shell({ currentUser, onLogout, onRoleChanged, onCredentialsChanged }: { currentUser: CurrentUser; onLogout: () => void; onRoleChanged: (user: CurrentUser) => void; onCredentialsChanged: (message: string) => void }) {
+function Shell({ currentUser, onLogout, onRoleChanged, onUserChanged, onCredentialsChanged }: { currentUser: CurrentUser; onLogout: () => void; onRoleChanged: (user: CurrentUser) => void; onUserChanged: (user: CurrentUser) => void; onCredentialsChanged: (message: string) => void }) {
   const [navOpen, setNavOpen] = useState(false)
   const [accountOpen, setAccountOpen] = useState(false)
   const [switchingRole, setSwitchingRole] = useState<ConstructionRole | null>(null)
   const [accountError, setAccountError] = useState<string | null>(null)
   const [usernameOpen, setUsernameOpen] = useState(false)
   const [passwordOpen, setPasswordOpen] = useState(false)
+  const [phoneOpen, setPhoneOpen] = useState(false)
+  const [phonePromptDismissed, setPhonePromptDismissed] = useState(false)
   const navigate = useNavigate()
   const location = useLocation()
   const nav = roleNavigation[currentUser.role]
@@ -470,6 +522,9 @@ function Shell({ currentUser, onLogout, onRoleChanged, onCredentialsChanged }: {
 
   const canAccess = (path: string) => path === '/' || path === '/tasks' || allowed.has(path)
 
+  const phoneMenuLabel = currentUser.phoneNumberVerified ? 'Phone number' : currentUser.phoneNumber ? 'Confirm phone number' : 'Add phone number'
+  const showPhonePrompt = currentUser.smsVerificationEnabled && !currentUser.phoneNumber && !phonePromptDismissed
+
   const readableOperationalRole = ['Administrator', 'Finance Officer', 'Foreman', 'Engineer', 'Supervisor', 'Storekeeper', 'Procurement Officer', 'Auditor'].includes(currentUser.role)
 
   return <div className={`live-shell${readableOperationalRole ? ' simplified-role-workspace' : ''}`}>
@@ -483,8 +538,9 @@ function Shell({ currentUser, onLogout, onRoleChanged, onCredentialsChanged }: {
     </aside>
     {navOpen && <button className="live-sidebar-scrim" aria-label="Close navigation" onClick={() => setNavOpen(false)}/>}
     <main className="live-main">
-      <header className="live-topbar"><button className="live-menu-button" aria-label="Open navigation" onClick={() => setNavOpen(true)}>☰</button><span className="live-mobile-brand">CONSTRUCT</span><div className="live-top-actions"><NotificationMenu role={currentUser.role} onNavigate={path => navigate(currentUser.role === 'CEO' && path === '/finance' ? '/finance?section=invoices' : path)}/><div className="live-account"><button className="live-profile" aria-expanded={accountOpen} onClick={() => setAccountOpen(value => !value)}><span>{initials(currentUser.fullName)}</span><div><strong>{currentUser.fullName}</strong><small>{currentUser.role}</small></div><i aria-hidden="true">⌄</i></button>{accountOpen && <section className="live-account-menu"><header><span>@{currentUser.username}</span><button aria-label="Close account menu" onClick={() => setAccountOpen(false)}>×</button></header>{currentUser.canSwitchRoles && <div className="live-role-list"><strong>Verification role</strong>{currentUser.availableRoles.map(role => <button className={role === currentUser.role ? 'active' : ''} disabled={switchingRole !== null} key={role} onClick={() => void switchRole(role)}><span>{role}</span>{switchingRole === role ? <small>Opening…</small> : role === currentUser.role && <small>Current</small>}</button>)}</div>}{accountError && <p role="alert">{accountError}</p>}<button onClick={() => { setAccountOpen(false); setUsernameOpen(true) }}>Change username</button><button onClick={() => { setAccountOpen(false); setPasswordOpen(true) }}>Change password</button><button className="sign-out" onClick={onLogout}>Sign out</button></section>}</div></div></header>
+      <header className="live-topbar"><button className="live-menu-button" aria-label="Open navigation" onClick={() => setNavOpen(true)}>☰</button><span className="live-mobile-brand">CONSTRUCT</span><div className="live-top-actions"><NotificationMenu role={currentUser.role} onNavigate={path => navigate(currentUser.role === 'CEO' && path === '/finance' ? '/finance?section=invoices' : path)}/><div className="live-account"><button className="live-profile" aria-expanded={accountOpen} onClick={() => setAccountOpen(value => !value)}><span>{initials(currentUser.fullName)}</span><div><strong>{currentUser.fullName}</strong><small>{currentUser.role}</small></div><i aria-hidden="true">⌄</i></button>{accountOpen && <section className="live-account-menu"><header><span>@{currentUser.username}</span><button aria-label="Close account menu" onClick={() => setAccountOpen(false)}>×</button></header>{currentUser.canSwitchRoles && <div className="live-role-list"><strong>Verification role</strong>{currentUser.availableRoles.map(role => <button className={role === currentUser.role ? 'active' : ''} disabled={switchingRole !== null} key={role} onClick={() => void switchRole(role)}><span>{role}</span>{switchingRole === role ? <small>Opening…</small> : role === currentUser.role && <small>Current</small>}</button>)}</div>}{accountError && <p role="alert">{accountError}</p>}<button onClick={() => { setAccountOpen(false); setUsernameOpen(true) }}>Change username</button><button onClick={() => { setAccountOpen(false); setPasswordOpen(true) }}>Change password</button>{currentUser.smsVerificationEnabled && <button onClick={() => { setAccountOpen(false); setPhoneOpen(true) }}>{phoneMenuLabel}</button>}<button className="sign-out" onClick={onLogout}>Sign out</button></section>}</div></div></header>
       <RoleContextNavigation role={currentUser.role} pathname={location.pathname} search={location.search}/>
+      {showPhonePrompt && <div className="live-phone-prompt" role="status"><p>Add your mobile number. You will need a code sent to it by SMS to change your password.</p><button className="primary" onClick={() => setPhoneOpen(true)}>Add phone number</button><button aria-label="Dismiss" onClick={() => setPhonePromptDismissed(true)}>×</button></div>}
       <div className="live-content"><Routes>
         <Route path="/" element={<LiveDashboardView currentUser={currentUser} onNavigate={destination => navigate(destinationPaths[destination])}/>}/>
         <Route path="/tasks" element={<MyTasksView currentUser={currentUser}/>}/>
@@ -507,7 +563,8 @@ function Shell({ currentUser, onLogout, onRoleChanged, onCredentialsChanged }: {
       </Routes></div>
     </main>
     {usernameOpen && <UsernameDialog username={currentUser.username} onClose={() => setUsernameOpen(false)} onChanged={() => onCredentialsChanged('Username changed. Sign in with your new username.')}/>}
-    {passwordOpen && <PasswordDialog onClose={() => setPasswordOpen(false)} onChanged={() => onCredentialsChanged('Password changed. Sign in with your new password.')}/>}
+    {passwordOpen && <PasswordDialog currentUser={currentUser} onClose={() => setPasswordOpen(false)} onChanged={() => onCredentialsChanged('Password changed. Sign in with your new password.')} onAddPhone={() => { setPasswordOpen(false); setPhoneOpen(true) }}/>}
+    {phoneOpen && <PhoneNumberDialog currentUser={currentUser} onClose={() => setPhoneOpen(false)} onVerified={onUserChanged}/>}
   </div>
 }
 
@@ -555,7 +612,7 @@ function LiveSession() {
     try { await authApi.logout() } finally { setCurrentUser(null) }
   }
   function credentialsChanged(message: string) { setCurrentUser(null); setSessionError(null); setSessionMessage(message) }
-  return <Shell currentUser={currentUser} onLogout={() => void logout()} onRoleChanged={setCurrentUser} onCredentialsChanged={credentialsChanged}/>
+  return <Shell currentUser={currentUser} onLogout={() => void logout()} onRoleChanged={setCurrentUser} onUserChanged={setCurrentUser} onCredentialsChanged={credentialsChanged}/>
 }
 
 export default function LiveApp() {
