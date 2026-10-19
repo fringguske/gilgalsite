@@ -2,7 +2,8 @@
  * TypeScript equivalents of the .NET exceptions the services throw. The API
  * exception handler maps them to the same HTTP status codes as before:
  *   KeyNotFoundError -> 404, UnauthorizedAccessError -> 403, ArgumentError -> 400,
- *   DbUpdateConcurrencyError / InvalidOperationError -> 409, anything else -> 500.
+ *   DbUpdateConcurrencyError / InvalidOperationError -> 409, ServiceUnavailableError -> 503,
+ *   anything else -> 500.
  */
 export class ArgumentError extends Error {
   constructor(message: string, readonly paramName?: string) {
@@ -45,5 +46,13 @@ export class DbUpdateConcurrencyError extends Error {
   constructor(message = 'The database operation was expected to affect 1 row(s), but actually affected 0 row(s).') {
     super(message)
     this.name = 'DbUpdateConcurrencyError'
+  }
+}
+
+/** An external dependency (such as the SMS gateway) could not complete the request. */
+export class ServiceUnavailableError extends Error {
+  constructor(message: string) {
+    super(message)
+    this.name = 'ServiceUnavailableError'
   }
 }

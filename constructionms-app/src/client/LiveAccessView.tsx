@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useState, type FormEvent } from 'react'
 import { useSearchParams } from 'react-router'
 import {
   ApiError,
@@ -87,6 +87,8 @@ export function LiveAccessView({ currentUser }: LiveAccessViewProps) {
   const [reviewingRequestId, setReviewingRequestId] = useState<number | null>(null)
   const [approvalRoleId, setApprovalRoleId] = useState<number | null>(null)
   const [approvalProjectIds, setApprovalProjectIds] = useState<number[]>([])
+  const [phoneDraft, setPhoneDraft] = useState<{ userId: number; value: string } | null>(null)
+  const [savingPhone, setSavingPhone] = useState(false)
 
   const selectedUser = users.find((user) => user.id === selectedUserId) ?? null
   const selectedHasPortfolioAccess = selectedUser
@@ -99,6 +101,11 @@ export function LiveAccessView({ currentUser }: LiveAccessViewProps) {
     selectedUser?.isActive && !selectedHasPortfolioAccess && !assignmentsLoading,
   )
   const assignmentsChanged = !sameIds(savedProjectIds, draftProjectIds)
+  // Self-registered accounts from before phone numbers were collected hold the text "Not provided".
+  const selectedHasPhone = Boolean(selectedUser && /\d/.test(selectedUser.phoneNumber))
+  const savedPhoneValue = selectedHasPhone ? selectedUser!.phoneNumber : ''
+  const phoneValue = phoneDraft && phoneDraft.userId === selectedUserId ? phoneDraft.value : savedPhoneValue
+  const phoneChanged = phoneValue.trim() !== '' && phoneValue.trim() !== savedPhoneValue
   const selectedRequest = pendingRequests.find((request) => request.id === selectedRequestId) ?? null
   const approvalRole = roles.find((role) => role.id === approvalRoleId) ?? null
   const approvalHasPortfolioAccess = approvalRole
@@ -269,6 +276,37 @@ export function LiveAccessView({ currentUser }: LiveAccessViewProps) {
     }
   }
 
+  async function savePhoneNumber(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault()
+    if (!selectedUser || !phoneChanged) return
+
+    setSavingPhone(true)
+    setAssignmentError(null)
+    setMessage(null)
+    try {
+      const changedUser = await usersApi.update(selectedUser.id, {
+        username: selectedUser.username,
+        fullName: selectedUser.fullName,
+        email: selectedUser.email,
+        phoneNumber: phoneValue.trim(),
+        roleId: selectedUser.roleId,
+      })
+      setUsers((current) =>
+        current.map((user) => (user.id === changedUser.id ? changedUser : user)),
+      )
+      setPhoneDraft(null)
+      setMessage(
+        changedUser.phoneNumberVerified
+          ? `Phone number saved for ${changedUser.fullName}.`
+          : `Phone number saved for ${changedUser.fullName}. It is confirmed by the SMS code sent the next time they change their password.`,
+      )
+    } catch (requestError) {
+      setAssignmentError(errorMessage(requestError))
+    } finally {
+      setSavingPhone(false)
+    }
+  }
+
   async function approveRequest(request: AccessRequest) {
     if (!approvalRoleId || (!approvalHasPortfolioAccess && approvalProjectIds.length === 0)) return
     setReviewingRequestId(request.id)
@@ -417,6 +455,7 @@ export function LiveAccessView({ currentUser }: LiveAccessViewProps) {
                 <div>
                   <strong>@{selectedRequest.username}</strong>
                   <span>{selectedRequest.email}</span>
+                  <span>{selectedRequest.phoneNumber ?? 'No phone number given'}</span>
                   <small>{new Date(selectedRequest.requestedAt).toLocaleString()}</small>
                 </div>
                 <label>
@@ -635,6 +674,53 @@ export function LiveAccessView({ currentUser }: LiveAccessViewProps) {
                       </button>
                     </div>
                   )}
+                </section>
+
+                <section className="lav-access-section" aria-labelledby="phone-number-title">
+                  <div className="lav-access-section-head">
+                    <div>
+                      <h3 id="phone-number-title">Phone number</h3>
+                      <p>Codes for password changes are sent here by SMS. A new number must be confirmed again.</p>
+                    </div>
+                    <span className={`lav-count-chip ${selectedUser.phoneNumberVerified ? '' : 'attention'}`}>
+                      {!selectedHasPhone ? 'Not provided' : selectedUser.phoneNumberVerified ? 'Verified' : 'Not verified'}
+                    </span>
+                  </div>
+
+                  <form className="lav-access-phone" onSubmit={(event) => void savePhoneNumber(event)}>
+                    <label className="lav-field">
+                      <span>Mobile number</span>
+                      <input
+                        type="tel"
+                        inputMode="tel"
+                        autoComplete="off"
+                        maxLength={30}
+                        placeholder="0712 345 678"
+                        value={phoneValue}
+                        onChange={(event) => {
+                          setPhoneDraft({ userId: selectedUser.id, value: event.currentTarget.value })
+                          setMessage(null)
+                        }}
+                      />
+                    </label>
+                    <div className="lav-access-save-row">
+                      <button
+                        type="button"
+                        className="lav-button secondary"
+                        disabled={!phoneChanged || savingPhone}
+                        onClick={() => setPhoneDraft(null)}
+                      >
+                        Discard changes
+                      </button>
+                      <button
+                        type="submit"
+                        className="lav-button primary"
+                        disabled={!phoneChanged || savingPhone}
+                      >
+                        {savingPhone ? 'Saving…' : 'Save phone number'}
+                      </button>
+                    </div>
+                  </form>
                 </section>
 
                 <section className="lav-access-section lav-access-account" aria-labelledby="account-status-title">

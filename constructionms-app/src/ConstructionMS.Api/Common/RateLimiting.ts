@@ -1,7 +1,7 @@
 import { ClaimTypes } from '@/ConstructionMS.Application/Security/ApplicationClaimTypes'
 import type { HttpContext } from './HttpContext'
 
-export type RateLimitPolicyName = 'login' | 'evidence-upload'
+export type RateLimitPolicyName = 'login' | 'evidence-upload' | 'verification-code'
 
 interface Policy {
   permitLimit: number
@@ -16,6 +16,12 @@ const policies: Record<RateLimitPolicyName, Policy> = {
     partitionKey: context => context.remoteIpAddress,
   },
   'evidence-upload': {
+    permitLimit: 10,
+    windowMs: 10 * 60_000,
+    partitionKey: context => context.user?.findFirstValue(ClaimTypes.NameIdentifier) ?? context.remoteIpAddress,
+  },
+  // Slows current-password guessing on the SMS code endpoints; SMS volume itself is capped in the database.
+  'verification-code': {
     permitLimit: 10,
     windowMs: 10 * 60_000,
     partitionKey: context => context.user?.findFirstValue(ClaimTypes.NameIdentifier) ?? context.remoteIpAddress,

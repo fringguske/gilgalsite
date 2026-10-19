@@ -172,6 +172,7 @@ export const accessRequests = pgTable("AccessRequests", {
 	approvedUserId: integer("ApprovedUserId"),
 	decisionNote: varchar("DecisionNote", { length: 500 }),
 	normalizedUsername: text("NormalizedUsername").generatedAlwaysAs(sql`lower(btrim(("Username")::text, (((((' '::text || chr(9)) || chr(10)) || chr(11)) || chr(12)) || chr(13))))`),
+	phoneNumber: varchar("PhoneNumber", { length: 30 }),
 });
 
 export const controlEvents = pgTable("ControlEvents", {
@@ -401,6 +402,7 @@ export const users = pgTable("Users", {
 	username: varchar("Username", { length: 50 }).notNull(),
 	normalizedUsername: text("NormalizedUsername").generatedAlwaysAs(sql`lower(btrim(("Username")::text, (((((' '::text || chr(9)) || chr(10)) || chr(11)) || chr(12)) || chr(13))))`),
 	credentialVersion: integer("CredentialVersion").default(1).notNull(),
+	phoneNumberVerifiedAt: timestamp("PhoneNumberVerifiedAt", { withTimezone: true, mode: 'date' }),
 });
 
 export const pettyCashReceiptConfirmations = pgTable("PettyCashReceiptConfirmations", {
@@ -724,6 +726,18 @@ export const securityAuditEvents = pgTable("SecurityAuditEvents", {
 	occurredAt: timestamp("OccurredAt", { withTimezone: true, mode: 'date' }).notNull(),
 	targetUserId: integer("TargetUserId").notNull(),
 	actorUserId: integer("ActorUserId"),
+});
+
+export const phoneVerificationCodes = pgTable("PhoneVerificationCodes", {
+	id: bigint("Id", { mode: "number" }).primaryKey().generatedByDefaultAsIdentity(),
+	userId: integer("UserId").notNull(),
+	purpose: varchar("Purpose", { length: 30 }).notNull(),
+	phoneNumber: varchar("PhoneNumber", { length: 30 }).notNull(),
+	codeHash: varchar("CodeHash", { length: 64 }).notNull(),
+	createdAt: timestamp("CreatedAt", { withTimezone: true, mode: 'date' }).notNull(),
+	expiresAt: timestamp("ExpiresAt", { withTimezone: true, mode: 'date' }).notNull(),
+	failedAttempts: integer("FailedAttempts").default(0).notNull(),
+	consumedAt: timestamp("ConsumedAt", { withTimezone: true, mode: 'date' }),
 });
 
 export const stockLedgerEntries = pgTable("StockLedgerEntries", {

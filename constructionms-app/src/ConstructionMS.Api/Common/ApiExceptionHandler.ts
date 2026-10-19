@@ -1,5 +1,6 @@
 import {
-  ArgumentError, DbUpdateConcurrencyError, InvalidOperationError, KeyNotFoundError, UnauthorizedAccessError,
+  ArgumentError, DbUpdateConcurrencyError, InvalidOperationError, KeyNotFoundError, ServiceUnavailableError,
+  UnauthorizedAccessError,
 } from '@/ConstructionMS.Application/Common/Exceptions'
 import { ModelValidationError } from '@/ConstructionMS.Application/Common/Validation'
 import { createLogger } from '@/ConstructionMS.Application/Common/Logger'
@@ -40,6 +41,9 @@ export function handleException(context: HttpContext, exception: unknown): Actio
     message = 'The change conflicts with an existing or protected database record.'
   } else if (exception instanceof InvalidOperationError) {
     status = 409
+    message = exception.message
+  } else if (exception instanceof ServiceUnavailableError) {
+    status = 503
     message = exception.message
   } else {
     status = 500

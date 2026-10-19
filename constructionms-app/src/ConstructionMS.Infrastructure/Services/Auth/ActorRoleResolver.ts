@@ -29,6 +29,8 @@ export class ActorRoleResolver implements IActorRoleResolver {
         username: users.username,
         fullName: users.fullName,
         email: users.email,
+        phoneNumber: users.phoneNumber,
+        phoneNumberVerifiedAt: users.phoneNumberVerifiedAt,
         credentialVersion: users.credentialVersion,
         actualRole: roles.roleName,
       })
@@ -72,6 +74,8 @@ export class ActorRoleResolver implements IActorRoleResolver {
           username: user.username,
           fullName: user.fullName,
           email: user.email,
+          phoneNumber: user.phoneNumber,
+          phoneNumberVerified: user.phoneNumberVerifiedAt !== null,
           credentialVersion: user.credentialVersion,
           actualRole: user.actualRole,
           effectiveRole,

@@ -8,6 +8,11 @@ export interface CurrentUserDto {
   username: string
   fullName: string
   email: string
+  /** E.164, or null when the account has no number an SMS can be sent to. */
+  phoneNumber: string | null
+  phoneNumberVerified: boolean
+  /** True when httpSMS is configured, so password changes need an SMS code. */
+  smsVerificationEnabled: boolean
   role: string
   actualRole: string
   canSwitchRoles: boolean

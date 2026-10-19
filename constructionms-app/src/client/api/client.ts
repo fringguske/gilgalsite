@@ -75,7 +75,12 @@ import type {
   PettyCashRequest,
   ControlEvent,
   ChangePasswordRequest,
+  ChangePhoneNumberRequest,
   ChangeUsernameRequest,
+  ConfirmPhoneNumberRequest,
+  SendPasswordChangeCodeRequest,
+  UpdateUserRequest,
+  VerificationCodeSent,
   AppNotification,
   ControlledCorrection,
   CreateControlledCorrectionRequest,
@@ -417,6 +422,13 @@ export const authApi = {
       signal,
     }),
 
+  sendPasswordChangeCode: (payload: SendPasswordChangeCodeRequest, signal?: AbortSignal) =>
+    request<VerificationCodeSent>('/auth/change-password/code', {
+      method: 'POST',
+      body: payload,
+      signal,
+    }),
+
   changePassword: (payload: ChangePasswordRequest, signal?: AbortSignal) =>
     requestWithoutResponse('/auth/change-password', {
       method: 'POST',
@@ -426,6 +438,20 @@ export const authApi = {
 
   changeUsername: (payload: ChangeUsernameRequest, signal?: AbortSignal) =>
     requestWithoutResponse('/auth/change-username', {
+      method: 'POST',
+      body: payload,
+      signal,
+    }),
+
+  changePhoneNumber: (payload: ChangePhoneNumberRequest, signal?: AbortSignal) =>
+    request<VerificationCodeSent>('/auth/phone', {
+      method: 'POST',
+      body: payload,
+      signal,
+    }),
+
+  confirmPhoneNumber: (payload: ConfirmPhoneNumberRequest, signal?: AbortSignal) =>
+    request<CurrentUser>('/auth/phone/verify', {
       method: 'POST',
       body: payload,
       signal,
@@ -487,6 +513,13 @@ export const usersApi = {
 
   get: (userId: number, signal?: AbortSignal) =>
     request<UserAccount>(`/users/${userId}`, { signal }),
+
+  update: (userId: number, payload: UpdateUserRequest, signal?: AbortSignal) =>
+    request<UserAccount>(`/users/${userId}`, {
+      method: 'PUT',
+      body: payload,
+      signal,
+    }),
 
   setActiveStatus: (
     userId: number,

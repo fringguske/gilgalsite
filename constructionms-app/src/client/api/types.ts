@@ -41,6 +41,11 @@ export interface CurrentUser {
   username: string
   fullName: string
   email: string
+  /** E.164, or null when the account has no number an SMS can reach. */
+  phoneNumber: string | null
+  phoneNumberVerified: boolean
+  /** When true, changing the password needs a code texted to the account's phone. */
+  smsVerificationEnabled: boolean
   role: ConstructionRole
   actualRole: ConstructionRole
   canSwitchRoles: boolean
@@ -54,10 +59,19 @@ export interface UserAccount {
   fullName: string
   email: string
   phoneNumber: string
+  phoneNumberVerified: boolean
   isActive: boolean
   createdAt: IsoDateTime
   roleId: number
   roleName: ConstructionRole
+}
+
+export interface UpdateUserRequest {
+  username: string
+  fullName: string
+  email: string
+  phoneNumber: string
+  roleId: number
 }
 
 export interface SetUserActiveRequest {
@@ -73,6 +87,27 @@ export interface ChangePasswordRequest {
   currentPassword: string
   newPassword: string
   confirmNewPassword: string
+  verificationCode?: string
+}
+
+export interface SendPasswordChangeCodeRequest {
+  currentPassword: string
+}
+
+export interface ChangePhoneNumberRequest {
+  phoneNumber: string
+  currentPassword: string
+}
+
+export interface ConfirmPhoneNumberRequest {
+  verificationCode: string
+}
+
+export interface VerificationCodeSent {
+  /** Masked, e.g. +254••••••678. */
+  sentTo: string
+  expiresAt: IsoDateTime
+  resendAvailableAt: IsoDateTime
 }
 
 export interface ChangeUsernameRequest {
@@ -82,6 +117,7 @@ export interface ChangeUsernameRequest {
 
 export interface RegisterAccessRequest {
   email: string
+  phoneNumber: string
   username: string
   password: string
   confirmPassword: string
@@ -91,6 +127,7 @@ export interface AccessRequest {
   id: number
   username: string
   email: string
+  phoneNumber: string | null
   status: 'Pending' | 'Approved' | 'Rejected'
   requestedAt: IsoDateTime
   reviewedAt: IsoDateTime | null

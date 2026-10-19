@@ -1,12 +1,14 @@
 import { ItVerificationOptions } from '@/ConstructionMS.Application/Configuration/ItVerificationOptions'
 import { TaskInboxOptions } from '@/ConstructionMS.Application/Configuration/TaskInboxOptions'
 import { EvidenceStorageOptions } from '@/ConstructionMS.Application/Configuration/EvidenceStorageOptions'
+import { SmsVerificationOptions } from '@/ConstructionMS.Application/Configuration/SmsVerificationOptions'
 import { createLogger } from '@/ConstructionMS.Application/Common/Logger'
 import { getAppDbContext, type AppDbContext } from '@/ConstructionMS.Infrastructure/Data/AppDbContext'
 import { ActorRoleResolver } from '@/ConstructionMS.Infrastructure/Services/Auth/ActorRoleResolver'
 import { AuthenticationService } from '@/ConstructionMS.Infrastructure/Services/Auth/AuthenticationService'
 import { AccessRequestService } from '@/ConstructionMS.Infrastructure/Services/Auth/AccessRequestService'
 import { CredentialService } from '@/ConstructionMS.Infrastructure/Services/Auth/CredentialService'
+import { PhoneVerificationService } from '@/ConstructionMS.Infrastructure/Services/Auth/PhoneVerificationService'
 import { UserProjectAssignmentService } from '@/ConstructionMS.Infrastructure/Services/Auth/UserProjectAssignmentService'
 import { DashboardService } from '@/ConstructionMS.Infrastructure/Services/Dashboard/DashboardService'
 import { UserService } from '@/ConstructionMS.Infrastructure/Services/Users/UserService'
@@ -27,6 +29,7 @@ import { MyTasksService } from '@/ConstructionMS.Infrastructure/Services/Tasks/M
 import { InAppNotificationService } from '@/ConstructionMS.Infrastructure/Services/Tasks/InAppNotificationService'
 import { SupabasePrivateEvidenceStorage } from '@/ConstructionMS.Infrastructure/Services/Evidence/SupabasePrivateEvidenceStorage'
 import { EvidenceService } from '@/ConstructionMS.Infrastructure/Services/Evidence/EvidenceService'
+import { HttpSmsSender } from '@/ConstructionMS.Infrastructure/Services/Sms/HttpSmsSender'
 import { HttpCurrentActorContext } from './Common/HttpCurrentActorContext'
 import type { HttpContext } from './Common/HttpContext'
 
@@ -34,6 +37,7 @@ import type { HttpContext } from './Common/HttpContext'
 const itVerificationOptions = lazy(() => ItVerificationOptions.fromEnvironment())
 const taskInboxOptions = lazy(() => TaskInboxOptions.fromEnvironment())
 const evidenceStorageOptions = lazy(() => EvidenceStorageOptions.fromEnvironment())
+const smsVerificationOptions = lazy(() => SmsVerificationOptions.fromEnvironment())
 
 function lazy<T>(factory: () => T): () => T {
   let value: T | undefined
@@ -49,6 +53,11 @@ function lazy<T>(factory: () => T): () => T {
 
 /** Evidence storage is a singleton, like AddSingleton<IEvidenceStorage>. */
 const evidenceStorage = lazy(() => new SupabasePrivateEvidenceStorage(evidenceStorageOptions()))
+
+/** Null while httpSMS is not configured, which turns SMS verification off. */
+const smsSender = lazy(() => smsVerificationOptions().enabled
+  ? new HttpSmsSender(smsVerificationOptions(), createLogger('HttpSmsSender'))
+  : null)
 
 /**
  * The dependency-injection container. One ServiceScope is created per HTTP request (or per
@@ -71,10 +80,14 @@ export class ServiceScope {
     return this.once('roles', () => new ActorRoleResolver(this.db, this.currentActorContext, itVerificationOptions()))
   }
   get authenticationService() {
-    return this.once('auth', () => new AuthenticationService(this.db, createLogger('AuthenticationService'), this.actorRoleResolver))
+    return this.once('auth', () => new AuthenticationService(
+      this.db, createLogger('AuthenticationService'), this.actorRoleResolver, smsVerificationOptions().enabled))
   }
   get accessRequestService() { return this.once('accessRequests', () => new AccessRequestService(this.db)) }
-  get credentialService() { return this.once('credentials', () => new CredentialService(this.db, createLogger('CredentialService'))) }
+  get phoneVerificationService() { return this.once('phoneVerification', () => new PhoneVerificationService(this.db, smsSender())) }
+  get credentialService() {
+    return this.once('credentials', () => new CredentialService(this.db, createLogger('CredentialService'), this.phoneVerificationService))
+  }
   get userProjectAssignmentService() { return this.once('assignments', () => new UserProjectAssignmentService(this.db)) }
   get dashboardService() { return this.once('dashboard', () => new DashboardService(this.db, this.authenticationService)) }
   get userService() { return this.once('users', () => new UserService(this.db)) }
