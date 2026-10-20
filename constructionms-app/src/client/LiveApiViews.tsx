@@ -30,6 +30,7 @@ import {
 import { EvidenceFiles } from './EvidenceReferenceField'
 import { CeoOverview } from './CeoOverview'
 import { OperationalOverview } from './OperationalOverview'
+import { PendingVerification } from './pendingVerification'
 import './live-api.css'
 import './ceo-overview.css'
 
@@ -378,19 +379,21 @@ export function LiveLoginView({ onAuthenticated, onBack, initialMode = 'signin' 
   const passwordId = useId()
   const confirmPasswordId = useId()
   const codeId = useId()
-  const [mode, setMode] = useState<'signin' | 'signup' | 'reset'>(initialMode)
+  // A reload while the person reads the SMS returns them to the code step, not to the start.
+  const [resumedReset] = useState(() => initialMode === 'signup' ? null : PendingVerification.read('ResetPasswordSignIn'))
+  const [mode, setMode] = useState<'signin' | 'signup' | 'reset'>(resumedReset ? 'reset' : initialMode)
   const [email, setEmail] = useState('')
   const [phoneNumber, setPhoneNumber] = useState('')
-  const [username, setUsername] = useState('')
+  const [username, setUsername] = useState(resumedReset?.username ?? '')
   const [password, setPassword] = useState('')
   const [confirmPassword, setConfirmPassword] = useState('')
   const [code, setCode] = useState('')
-  const [resetCodeRequested, setResetCodeRequested] = useState(false)
+  const [resetCodeExpiresAt, setResetCodeExpiresAt] = useState<string | null>(resumedReset?.expiresAt ?? null)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [message, setMessage] = useState<string | null>(null)
   // Forgotten password: step 1 asks for the username, step 2 for the SMS code and the new password.
-  const choosingNewPassword = mode === 'reset' && resetCodeRequested
+  const choosingNewPassword = mode === 'reset' && resetCodeExpiresAt !== null
 
   function switchMode(next: 'signin' | 'signup' | 'reset') {
     setMode(next)
@@ -399,13 +402,16 @@ export function LiveLoginView({ onAuthenticated, onBack, initialMode = 'signin' 
     setPassword('')
     setConfirmPassword('')
     setCode('')
-    setResetCodeRequested(false)
+    setResetCodeExpiresAt(null)
+    PendingVerification.clear()
   }
 
   async function requestResetCode() {
     await authApi.sendPasswordResetCode({ username: username.trim() })
+    const expiresAt = PendingVerification.expiresAtFromNow()
+    PendingVerification.save({ flow: 'ResetPasswordSignIn', username: username.trim(), expiresAt })
     setCode('')
-    setResetCodeRequested(true)
+    setResetCodeExpiresAt(expiresAt)
   }
 
   useEffect(() => {
@@ -439,7 +445,7 @@ export function LiveLoginView({ onAuthenticated, onBack, initialMode = 'signin' 
         setConfirmPassword('')
         setMode('signin')
         setMessage('Request sent. An Administrator must approve your role before you can sign in.')
-      } else if (mode === 'reset' && !resetCodeRequested) {
+      } else if (mode === 'reset' && resetCodeExpiresAt === null) {
         await requestResetCode()
       } else if (mode === 'reset') {
         if (password !== confirmPassword) {
@@ -487,11 +493,11 @@ export function LiveLoginView({ onAuthenticated, onBack, initialMode = 'signin' 
 
           {error && <Notice tone="error">{error}</Notice>}
           {message && <Notice tone="success">{message}</Notice>}
-          {mode === 'reset' && !resetCodeRequested && (
+          {mode === 'reset' && resetCodeExpiresAt === null && (
             <p className="lav-login-note">Enter your username. A code will be sent by SMS to the phone number you confirmed in your account.</p>
           )}
           {choosingNewPassword && (
-            <p className="lav-login-note">If <strong>@{username.trim()}</strong> has a confirmed phone number, a code has been sent to it. It expires in 10 minutes.</p>
+            <p className="lav-login-note">If <strong>@{username.trim()}</strong> has a confirmed phone number, a code has been sent to it. It works until {PendingVerification.formatExpiry(resetCodeExpiresAt)}.</p>
           )}
 
           {mode === 'signup' && (
