@@ -6,7 +6,6 @@ import type { LoginRequestDto } from '@/ConstructionMS.Application/DTOs/Auth/Log
 import type { ActorRoleContext, IActorRoleResolver } from '@/ConstructionMS.Application/Services/Auth/IActorRoleResolver'
 import type { IAuthenticationService } from '@/ConstructionMS.Application/Services/Auth/IAuthenticationService'
 import { InputNormalizer } from '../../Common/InputNormalizer'
-import { PhoneNumbers } from '../../Common/PhoneNumbers'
 import type { AppDbContext } from '../../Data/AppDbContext'
 import { projects, roles, userProjectAssignments, users } from '../../Data/schema'
 
@@ -20,7 +19,7 @@ export class AuthenticationService implements IAuthenticationService {
     private readonly db: AppDbContext,
     private readonly logger: ILogger,
     private readonly actorRoleResolver: IActorRoleResolver,
-    private readonly smsVerificationEnabled: boolean,
+    private readonly emailVerificationEnabled: boolean,
   ) {}
 
   async authenticateAsync(request: LoginRequestDto): Promise<CurrentUserDto | null> {
@@ -85,9 +84,8 @@ export class AuthenticationService implements IAuthenticationService {
       username: actor.username,
       fullName: actor.fullName,
       email: actor.email,
-      phoneNumber: PhoneNumbers.tryNormalize(actor.phoneNumber),
-      phoneNumberVerified: actor.phoneNumberVerified,
-      smsVerificationEnabled: this.smsVerificationEnabled,
+      emailVerified: actor.emailVerified,
+      emailVerificationEnabled: this.emailVerificationEnabled,
       role: actor.effectiveRole,
       actualRole: actor.actualRole,
       canSwitchRoles: actor.canSwitchRoles,

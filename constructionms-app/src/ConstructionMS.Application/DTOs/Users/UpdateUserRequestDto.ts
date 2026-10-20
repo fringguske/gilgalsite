@@ -8,7 +8,8 @@ export const UpdateUserRequestDto = dto({
   username: f.string().required().stringLength(50, 3).regex('^[a-zA-Z0-9][a-zA-Z0-9._-]*$'),
   fullName: f.string().required().stringLength(150, 2),
   email: f.string().required().stringLength(254).regex(EmailAddressPattern, EmailAddressMessage('Email')),
-  phoneNumber: f.string().required().stringLength(30).regex(PhonePattern, PhoneMessage('PhoneNumber')),
+  /** Omitted keeps the current number, so a profile whose number is "Not provided" can still be edited. */
+  phoneNumber: f.string().nullable().stringLength(30).regex(PhonePattern, PhoneMessage('PhoneNumber')),
   roleId: f.int().range(1, INT_MAX),
 })
 export type UpdateUserRequestDto = InferDto<typeof UpdateUserRequestDto>

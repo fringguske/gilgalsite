@@ -49,7 +49,7 @@ export class DbUpdateConcurrencyError extends Error {
   }
 }
 
-/** An external dependency (such as the SMS gateway) could not complete the request. */
+/** An external dependency (such as the email provider) could not complete the request. */
 export class ServiceUnavailableError extends Error {
   constructor(message: string) {
     super(message)

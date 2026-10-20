@@ -5,9 +5,9 @@ import { ChangeUsernameRequestDto } from '@/ConstructionMS.Application/DTOs/Auth
 import { toCurrentUserJson, type CurrentUserDto } from '@/ConstructionMS.Application/DTOs/Auth/CurrentUserDto'
 import { LoginRequestDto } from '@/ConstructionMS.Application/DTOs/Auth/LoginRequestDto'
 import {
-  ChangePhoneNumberRequestDto, ConfirmPhoneNumberRequestDto, ResetPasswordRequestDto, SendPasswordChangeCodeRequestDto,
+  ChangeEmailRequestDto, ConfirmEmailRequestDto, ResetPasswordRequestDto, SendPasswordChangeCodeRequestDto,
   SendPasswordResetCodeRequestDto,
-} from '@/ConstructionMS.Application/DTOs/Auth/PhoneVerificationDtos'
+} from '@/ConstructionMS.Application/DTOs/Auth/EmailVerificationDtos'
 import { RegisterAccessRequestDto } from '@/ConstructionMS.Application/DTOs/Auth/RegisterAccessRequestDto'
 import { SwitchRoleRequestDto } from '@/ConstructionMS.Application/DTOs/Auth/SwitchRoleRequestDto'
 import type { IAccessRequestService } from '@/ConstructionMS.Application/Services/Auth/IAccessRequestService'
@@ -78,7 +78,7 @@ export class AuthControllerImpl extends ControllerBase {
     return this.noContent()
   }
 
-  /** Checks the current password, then texts a one-time code to the account's phone number. */
+  /** Checks the current password, then emails a one-time code to the account's address. */
   async sendPasswordChangeCode(): Promise<ActionResult> {
     const request = await this.fromBody(SendPasswordChangeCodeRequestDto)
     const sent = await this.credentialService.sendPasswordChangeCodeAsync(this.currentUserId(), request)
@@ -92,18 +92,18 @@ export class AuthControllerImpl extends ControllerBase {
     return this.noContent()
   }
 
-  /** Checks the current password, then texts a one-time code to the new number. */
-  async changePhoneNumber(): Promise<ActionResult> {
-    const request = await this.fromBody(ChangePhoneNumberRequestDto)
-    const sent = await this.credentialService.startPhoneNumberChangeAsync(this.currentUserId(), request)
+  /** Checks the current password, then emails a one-time code to the address to confirm. */
+  async changeEmail(): Promise<ActionResult> {
+    const request = await this.fromBody(ChangeEmailRequestDto)
+    const sent = await this.credentialService.startEmailConfirmationAsync(this.currentUserId(), request)
     return this.ok(ApiResponse.ok(sent))
   }
 
-  /** Saves the number the code was sent to as verified and returns the refreshed current user. */
-  async confirmPhoneNumber(): Promise<ActionResult> {
-    const request = await this.fromBody(ConfirmPhoneNumberRequestDto)
+  /** Saves the address the code was sent to as confirmed and returns the refreshed current user. */
+  async confirmEmail(): Promise<ActionResult> {
+    const request = await this.fromBody(ConfirmEmailRequestDto)
     const userId = this.currentUserId()
-    await this.credentialService.confirmPhoneNumberAsync(userId, request)
+    await this.credentialService.confirmEmailAsync(userId, request)
     const user = await this.authenticationService.getCurrentUserAsync(userId)
     return user === null
       ? this.unauthorized(ApiResponse.fail('The authenticated user is inactive.'))
@@ -111,7 +111,7 @@ export class AuthControllerImpl extends ControllerBase {
   }
 
   /**
-   * Forgotten password: texts a code to the account's confirmed number. Answers 204 whether or not
+   * Forgotten password: emails a code to the account's confirmed address. Answers 204 whether or not
    * a code was sent, so it cannot be used to find out which accounts exist.
    */
   async sendPasswordResetCode(): Promise<ActionResult> {
@@ -120,7 +120,7 @@ export class AuthControllerImpl extends ControllerBase {
     return this.noContent()
   }
 
-  /** Sets a new password with the SMS code instead of the current password; every session ends. */
+  /** Sets a new password with the emailed code instead of the current password; every session ends. */
   async resetPassword(): Promise<ActionResult> {
     const request = await this.fromBody(ResetPasswordRequestDto)
     await this.credentialService.resetPasswordAsync(request)
@@ -160,8 +160,8 @@ export const AuthController: ControllerMetadata<AuthControllerImpl> = {
     { method: 'POST', template: 'change-username', handler: c => c.changeUsername() },
     { method: 'POST', template: 'change-password/code', rateLimit: 'verification-code', handler: c => c.sendPasswordChangeCode() },
     { method: 'POST', template: 'change-password', handler: c => c.changePassword() },
-    { method: 'POST', template: 'phone', rateLimit: 'verification-code', handler: c => c.changePhoneNumber() },
-    { method: 'POST', template: 'phone/verify', rateLimit: 'verification-code', handler: c => c.confirmPhoneNumber() },
+    { method: 'POST', template: 'email', rateLimit: 'verification-code', handler: c => c.changeEmail() },
+    { method: 'POST', template: 'email/verify', rateLimit: 'verification-code', handler: c => c.confirmEmail() },
     { method: 'POST', template: 'password-reset/code', allowAnonymous: true, rateLimit: 'password-reset', handler: c => c.sendPasswordResetCode() },
     { method: 'POST', template: 'password-reset', allowAnonymous: true, rateLimit: 'password-reset', handler: c => c.resetPassword() },
     { method: 'POST', template: 'logout', handler: c => c.logout() },

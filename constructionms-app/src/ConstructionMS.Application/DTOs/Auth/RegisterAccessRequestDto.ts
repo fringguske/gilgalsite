@@ -7,8 +7,6 @@ export const EmailAddressMessage = (name: string) => `The ${name} field is not a
 
 export const RegisterAccessRequestDto = dto({
   email: f.string().required().stringLength(254).regex(EmailAddressPattern, EmailAddressMessage('Email')),
-  /** Normalised to E.164 by the service, which explains the accepted formats when it is not a mobile number. */
-  phoneNumber: f.string().required().stringLength(30),
   username: f.string().required().stringLength(50, 3).regex('^[a-zA-Z0-9][a-zA-Z0-9._-]*$'),
   password: f.string().required().stringLength(72, 12),
   confirmPassword: f.string().required().compare('password', 'Passwords do not match.'),
@@ -28,8 +26,6 @@ export interface AccessRequestResponseDto {
   id: number
   username: string
   email: string
-  /** Null for requests made before phone numbers were collected. */
-  phoneNumber: string | null
   status: string
   requestedAt: Date
   reviewedAt: Date | null

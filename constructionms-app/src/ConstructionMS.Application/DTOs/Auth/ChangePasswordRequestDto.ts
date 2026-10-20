@@ -1,11 +1,11 @@
 import { dto, f, utf8ByteCount, validationResult, type InferDto, type ValidationResult } from '@/ConstructionMS.Application/Common/Validation'
-import { VerificationCodeMessage, VerificationCodePattern } from './PhoneVerificationDtos'
+import { VerificationCodeMessage, VerificationCodePattern } from './EmailVerificationDtos'
 
 export const ChangePasswordRequestDto = dto({
   currentPassword: f.string().required().stringLength(72, 1),
   newPassword: f.string().required().stringLength(72, 12),
   confirmNewPassword: f.string().required().compare('newPassword', 'Passwords do not match.'),
-  /** The SMS code from POST /auth/change-password/code; required while SMS verification is configured. */
+  /** The emailed code from POST /auth/change-password/code; required while email verification is configured. */
   verificationCode: f.string().nullable().regex(VerificationCodePattern, VerificationCodeMessage),
 }, (v) => {
   const results: ValidationResult[] = []

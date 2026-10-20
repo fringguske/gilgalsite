@@ -11,8 +11,7 @@ export interface ActorRoleContext {
   readonly username: string
   readonly fullName: string
   readonly email: string
-  readonly phoneNumber: string
-  readonly phoneNumberVerified: boolean
+  readonly emailVerified: boolean
   readonly credentialVersion: number
   readonly actualRole: string
   readonly effectiveRole: string

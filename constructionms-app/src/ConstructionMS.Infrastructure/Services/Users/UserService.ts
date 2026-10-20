@@ -11,7 +11,6 @@ import type { UserResponseDto } from '@/ConstructionMS.Application/DTOs/Users/Us
 import type { IUserService } from '@/ConstructionMS.Application/Services/Users/IUserService'
 import { SecurityAuditEventTypes, SecurityAuditSources } from '@/ConstructionMS.Domain/Entities/SecurityAuditEvent'
 import { InputNormalizer } from '../../Common/InputNormalizer'
-import { PhoneNumbers } from '../../Common/PhoneNumbers'
 import { IsolationLevel, type AppDbContext, type DbExecutor } from '../../Data/AppDbContext'
 import { accessRequests, roles, securityAuditEvents, users } from '../../Data/schema'
 import { UsernameReservationLock } from '../Auth/UsernameReservationLock'
@@ -79,7 +78,7 @@ export class UserService implements IUserService {
       }
 
       const fullName = InputNormalizer.requiredText(dto.fullName, 'FullName', 2, 150)
-      const phoneNumber = PhoneNumbers.normalize(dto.phoneNumber, 'PhoneNumber')
+      const phoneNumber = InputNormalizer.requiredText(dto.phoneNumber, 'PhoneNumber', 1, 30)
       const passwordHash = await hash(
         InputNormalizer.password(dto.password, 'Password', 12, 72, 72),
         PasswordWorkFactor)
@@ -153,13 +152,11 @@ export class UserService implements IUserService {
       }
 
       const fullName = InputNormalizer.requiredText(dto.fullName, 'FullName', 2, 150)
-      // A new number must be one an SMS can reach, and the person has to prove it again with a code.
-      const phoneNumberInput = InputNormalizer.requiredText(dto.phoneNumber, 'PhoneNumber', 1, 30)
-      const phoneNumber = phoneNumberInput === user.phoneNumber
+      const phoneNumber = dto.phoneNumber === null
         ? user.phoneNumber
-        : PhoneNumbers.normalize(phoneNumberInput, 'PhoneNumber')
-      const phoneNumberChanged = phoneNumber !== user.phoneNumber
-        && phoneNumber !== PhoneNumbers.tryNormalize(user.phoneNumber)
+        : InputNormalizer.requiredText(dto.phoneNumber, 'PhoneNumber', 1, 30)
+      // The person has to prove a new address again with an emailed code before it can reset their password.
+      const emailChanged = email !== user.email.trim().toLowerCase()
       const profileChanged = user.fullName !== fullName
         || user.username !== username
         || user.email !== email
@@ -173,7 +170,7 @@ export class UserService implements IUserService {
           email,
           phoneNumber,
           roleId: dto.roleId,
-          ...(phoneNumberChanged ? { phoneNumberVerifiedAt: null } : {}),
+          ...(emailChanged ? { emailVerifiedAt: null } : {}),
         })
         .where(eq(users.id, id))
 
@@ -288,7 +285,7 @@ function toDto(u: User, roleName: string): UserResponseDto {
     fullName: u.fullName,
     email: u.email,
     phoneNumber: u.phoneNumber,
-    phoneNumberVerified: u.phoneNumberVerifiedAt !== null,
+    emailVerified: u.emailVerifiedAt !== null,
     isActive: u.isActive,
     createdAt: u.createdAt,
     roleId: u.roleId,
