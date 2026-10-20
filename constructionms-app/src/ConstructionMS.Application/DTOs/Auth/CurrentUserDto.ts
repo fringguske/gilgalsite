@@ -8,11 +8,10 @@ export interface CurrentUserDto {
   username: string
   fullName: string
   email: string
-  /** E.164, or null when the account has no number an SMS can be sent to. */
-  phoneNumber: string | null
-  phoneNumberVerified: boolean
-  /** True when httpSMS is configured, so password changes need an SMS code. */
-  smsVerificationEnabled: boolean
+  /** True once a code emailed to the address has been used, so a forgotten password can be reset. */
+  emailVerified: boolean
+  /** True when SMTP is configured, so password changes need an emailed code. */
+  emailVerificationEnabled: boolean
   role: string
   actualRole: string
   canSwitchRoles: boolean

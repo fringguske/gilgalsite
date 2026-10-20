@@ -7,7 +7,7 @@
 import { closeAppDbContext, getAppDbContext } from '@/ConstructionMS.Infrastructure/Data/AppDbContext'
 import { createLogger } from '@/ConstructionMS.Application/Common/Logger'
 import { CredentialService } from '@/ConstructionMS.Infrastructure/Services/Auth/CredentialService'
-import { PhoneVerificationService } from '@/ConstructionMS.Infrastructure/Services/Auth/PhoneVerificationService'
+import { EmailVerificationService } from '@/ConstructionMS.Infrastructure/Services/Auth/EmailVerificationService'
 import { loadLocalEnvironment, requireSchemaAsync } from './environment'
 
 function getRequiredOption(args: string[], optionName: string): string {
@@ -73,8 +73,8 @@ async function main(): Promise<void> {
     throw new Error('The passwords did not match. No change was made.')
   }
 
-  // Server recovery never sends SMS: whoever runs this already controls the server.
-  const credentials = new CredentialService(db, createLogger('CredentialService'), new PhoneVerificationService(db, null))
+  // Server recovery never sends email: whoever runs this already controls the server.
+  const credentials = new CredentialService(db, createLogger('CredentialService'), new EmailVerificationService(db, null))
   await credentials.resetAdministratorPasswordAsync(username, newPassword)
   console.log('Administrator password reset completed. Existing sessions for the account are now invalid.')
 }

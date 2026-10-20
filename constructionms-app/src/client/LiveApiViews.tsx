@@ -374,16 +374,14 @@ export function PublicLandingView({ onSignIn, onRequestAccess }: PublicLandingVi
 
 export function LiveLoginView({ onAuthenticated, onBack, initialMode = 'signin' }: LiveLoginViewProps) {
   const emailId = useId()
-  const phoneNumberId = useId()
   const usernameId = useId()
   const passwordId = useId()
   const confirmPasswordId = useId()
   const codeId = useId()
-  // A reload while the person reads the SMS returns them to the code step, not to the start.
+  // A reload while the person reads the email returns them to the code step, not to the start.
   const [resumedReset] = useState(() => initialMode === 'signup' ? null : PendingVerification.read('ResetPasswordSignIn'))
   const [mode, setMode] = useState<'signin' | 'signup' | 'reset'>(resumedReset ? 'reset' : initialMode)
   const [email, setEmail] = useState('')
-  const [phoneNumber, setPhoneNumber] = useState('')
   const [username, setUsername] = useState(resumedReset?.username ?? '')
   const [password, setPassword] = useState('')
   const [confirmPassword, setConfirmPassword] = useState('')
@@ -392,7 +390,7 @@ export function LiveLoginView({ onAuthenticated, onBack, initialMode = 'signin' 
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [message, setMessage] = useState<string | null>(null)
-  // Forgotten password: step 1 asks for the username, step 2 for the SMS code and the new password.
+  // Forgotten password: step 1 asks for the username, step 2 for the emailed code and the new password.
   const choosingNewPassword = mode === 'reset' && resetCodeExpiresAt !== null
 
   function switchMode(next: 'signin' | 'signup' | 'reset') {
@@ -440,7 +438,7 @@ export function LiveLoginView({ onAuthenticated, onBack, initialMode = 'signin' 
           setError('Passwords do not match.')
           return
         }
-        await authApi.register({ email: email.trim(), phoneNumber: phoneNumber.trim(), username: username.trim(), password, confirmPassword })
+        await authApi.register({ email: email.trim(), username: username.trim(), password, confirmPassword })
         setPassword('')
         setConfirmPassword('')
         setMode('signin')
@@ -494,15 +492,15 @@ export function LiveLoginView({ onAuthenticated, onBack, initialMode = 'signin' 
           {error && <Notice tone="error">{error}</Notice>}
           {message && <Notice tone="success">{message}</Notice>}
           {mode === 'reset' && resetCodeExpiresAt === null && (
-            <p className="lav-login-note">Enter your username. A code will be sent by SMS to the phone number you confirmed in your account.</p>
+            <p className="lav-login-note">Enter your username. A code will be emailed to the address you confirmed in your account.</p>
           )}
           {choosingNewPassword && (
-            <p className="lav-login-note">If <strong>@{username.trim()}</strong> has a confirmed phone number, a code has been sent to it. It works until {PendingVerification.formatExpiry(resetCodeExpiresAt)}.</p>
+            <p className="lav-login-note">If <strong>@{username.trim()}</strong> has a confirmed email address, a code has been sent to it. It works until {PendingVerification.formatExpiry(resetCodeExpiresAt)}. If it is not in your inbox, check the spam folder.</p>
           )}
 
           {mode === 'signup' && (
             <label className="lav-field" htmlFor={emailId}>
-              <span>Email address</span>
+              <span>Email address <small>· codes to change or reset your password are sent here</small></span>
               <input
                 id={emailId}
                 type="email"
@@ -514,24 +512,6 @@ export function LiveLoginView({ onAuthenticated, onBack, initialMode = 'signin' 
                 placeholder="name@company.co.ke"
                 required
                 autoFocus
-              />
-            </label>
-          )}
-
-          {mode === 'signup' && (
-            <label className="lav-field" htmlFor={phoneNumberId}>
-              <span>Mobile number <small>· codes to change or reset your password are sent here by SMS</small></span>
-              <input
-                id={phoneNumberId}
-                type="tel"
-                name="phone"
-                value={phoneNumber}
-                onChange={(event) => setPhoneNumber(event.currentTarget.value)}
-                autoComplete="tel"
-                inputMode="tel"
-                maxLength={30}
-                placeholder="0712 345 678"
-                required
               />
             </label>
           )}

@@ -75,9 +75,9 @@ import type {
   PettyCashRequest,
   ControlEvent,
   ChangePasswordRequest,
-  ChangePhoneNumberRequest,
+  ChangeEmailRequest,
   ChangeUsernameRequest,
-  ConfirmPhoneNumberRequest,
+  ConfirmEmailRequest,
   ResetPasswordRequest,
   SendPasswordChangeCodeRequest,
   SendPasswordResetCodeRequest,
@@ -445,21 +445,21 @@ export const authApi = {
       signal,
     }),
 
-  changePhoneNumber: (payload: ChangePhoneNumberRequest, signal?: AbortSignal) =>
-    request<VerificationCodeSent>('/auth/phone', {
+  changeEmail: (payload: ChangeEmailRequest, signal?: AbortSignal) =>
+    request<VerificationCodeSent>('/auth/email', {
       method: 'POST',
       body: payload,
       signal,
     }),
 
-  confirmPhoneNumber: (payload: ConfirmPhoneNumberRequest, signal?: AbortSignal) =>
-    request<CurrentUser>('/auth/phone/verify', {
+  confirmEmail: (payload: ConfirmEmailRequest, signal?: AbortSignal) =>
+    request<CurrentUser>('/auth/email/verify', {
       method: 'POST',
       body: payload,
       signal,
     }),
 
-  /** Answers the same whether or not the account exists or has a confirmed number. */
+  /** Answers the same whether or not the account exists or has a confirmed address. */
   sendPasswordResetCode: (payload: SendPasswordResetCodeRequest, signal?: AbortSignal) =>
     requestWithoutResponse('/auth/password-reset/code', {
       method: 'POST',

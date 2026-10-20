@@ -1,18 +1,18 @@
 /**
- * Remembers, for this browser tab only, that an SMS code was sent and which step it unlocks.
- * Phones often reload a background tab while its owner reads the code in their messages app;
+ * Remembers, for this browser tab only, that an emailed code was sent and which step it unlocks.
+ * Phones often reload a background tab while its owner reads the code in their email app;
  * without this they come back to the first step and have to ask for another code. Only what
  * was already on screen is kept: never a password, and never the code.
  */
 export type PendingVerification =
   | { flow: 'ResetPasswordSignIn'; username: string; expiresAt: string }
   | { flow: 'ChangePassword'; username: string; forgotCurrentPassword: boolean; sentTo: string; expiresAt: string }
-  | { flow: 'ConfirmPhoneNumber'; username: string; sentTo: string; expiresAt: string }
+  | { flow: 'ConfirmEmail'; username: string; sentTo: string; expiresAt: string }
 
 type Flow = PendingVerification['flow']
 
 const StorageKey = 'constructionms:pending-verification'
-// Matches CodeLifetimeMs in PhoneVerificationService. The server still decides whether a code works.
+// Matches CodeLifetimeMs in EmailVerificationService. The server still decides whether a code works.
 const CodeLifetimeMs = 10 * 60_000
 const timeFormat = new Intl.DateTimeFormat('en-KE', { hour: '2-digit', minute: '2-digit' })
 

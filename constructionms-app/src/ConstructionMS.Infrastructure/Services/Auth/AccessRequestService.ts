@@ -10,7 +10,6 @@ import type {
 } from '@/ConstructionMS.Application/DTOs/Auth/RegisterAccessRequestDto'
 import type { IAccessRequestService } from '@/ConstructionMS.Application/Services/Auth/IAccessRequestService'
 import { InputNormalizer } from '../../Common/InputNormalizer'
-import { PhoneNumbers } from '../../Common/PhoneNumbers'
 import { IsolationLevel, type AppDbContext, type DbExecutor } from '../../Data/AppDbContext'
 import { accessRequests, projects, roles, userProjectAssignments, users } from '../../Data/schema'
 import { UsernameReservationLock } from './UsernameReservationLock'
@@ -26,7 +25,6 @@ export class AccessRequestService implements IAccessRequestService {
   async registerAsync(request: RegisterAccessRequestDto): Promise<AccessRequestResponseDto> {
     const username = InputNormalizer.username(request.username, 'Username')
     const email = InputNormalizer.email(request.email, 'Email')
-    const phoneNumber = PhoneNumbers.normalize(request.phoneNumber, 'PhoneNumber')
     const password = InputNormalizer.password(request.password, 'Password', 12, 72, 72)
     if (password !== request.confirmPassword) {
       throw new ArgumentError('Passwords do not match.', 'ConfirmPassword')
@@ -53,7 +51,7 @@ export class AccessRequestService implements IAccessRequestService {
 
       const [inserted] = await tx
         .insert(accessRequests)
-        .values({ username, email, phoneNumber, passwordHash, status: 'Pending', requestedAt: new Date() })
+        .values({ username, email, passwordHash, status: 'Pending', requestedAt: new Date() })
         .returning()
       return inserted!
     }, { isolationLevel: IsolationLevel.Serializable })
@@ -144,8 +142,7 @@ export class AccessRequestService implements IAccessRequestService {
           username: accessRequest.username,
           fullName: accessRequest.username,
           email: accessRequest.email,
-          // Requests made before phone numbers were collected have none; the person adds one after signing in.
-          phoneNumber: accessRequest.phoneNumber ?? 'Not provided',
+          phoneNumber: 'Not provided',
           passwordHash: accessRequest.passwordHash,
           roleId: role.id,
           isActive: true,
@@ -246,7 +243,6 @@ function toDto(request: AccessRequest, reviewedByName: string | null): AccessReq
     id: request.id,
     username: request.username,
     email: request.email,
-    phoneNumber: request.phoneNumber,
     status: request.status,
     requestedAt: request.requestedAt,
     reviewedAt: request.reviewedAt,

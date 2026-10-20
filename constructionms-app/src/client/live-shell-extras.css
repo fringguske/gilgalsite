@@ -126,10 +126,10 @@
 
 .account-dialog form > p.account-dialog-note strong {
   color: #1d2d36;
-  white-space: nowrap;
+  overflow-wrap: anywhere;
 }
 
-.live-phone-prompt {
+.live-email-prompt {
   display: flex;
   align-items: center;
   gap: 0.75rem;
@@ -140,13 +140,13 @@
   font-size: 0.8rem;
 }
 
-.live-phone-prompt p {
+.live-email-prompt p {
   flex: 1;
   margin: 0;
   line-height: 1.4;
 }
 
-.live-phone-prompt button {
+.live-email-prompt button {
   flex: 0 0 auto;
   min-height: 34px;
   border: 1px solid #c9b48f;
@@ -157,19 +157,19 @@
   font-weight: 750;
 }
 
-.live-phone-prompt button.primary {
+.live-email-prompt button.primary {
   border-color: #214e44;
   background: #214e44;
   color: #fff;
 }
 
 @media (max-width: 560px) {
-  .live-phone-prompt {
+  .live-email-prompt {
     flex-wrap: wrap;
     padding: 0.6rem 0.75rem;
   }
 
-  .live-phone-prompt p {
+  .live-email-prompt p {
     flex-basis: calc(100% - 3rem);
   }
 }

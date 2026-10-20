@@ -87,8 +87,8 @@ export function LiveAccessView({ currentUser }: LiveAccessViewProps) {
   const [reviewingRequestId, setReviewingRequestId] = useState<number | null>(null)
   const [approvalRoleId, setApprovalRoleId] = useState<number | null>(null)
   const [approvalProjectIds, setApprovalProjectIds] = useState<number[]>([])
-  const [phoneDraft, setPhoneDraft] = useState<{ userId: number; value: string } | null>(null)
-  const [savingPhone, setSavingPhone] = useState(false)
+  const [emailDraft, setEmailDraft] = useState<{ userId: number; value: string } | null>(null)
+  const [savingEmail, setSavingEmail] = useState(false)
 
   const selectedUser = users.find((user) => user.id === selectedUserId) ?? null
   const selectedHasPortfolioAccess = selectedUser
@@ -101,11 +101,9 @@ export function LiveAccessView({ currentUser }: LiveAccessViewProps) {
     selectedUser?.isActive && !selectedHasPortfolioAccess && !assignmentsLoading,
   )
   const assignmentsChanged = !sameIds(savedProjectIds, draftProjectIds)
-  // Self-registered accounts from before phone numbers were collected hold the text "Not provided".
-  const selectedHasPhone = Boolean(selectedUser && /\d/.test(selectedUser.phoneNumber))
-  const savedPhoneValue = selectedHasPhone ? selectedUser!.phoneNumber : ''
-  const phoneValue = phoneDraft && phoneDraft.userId === selectedUserId ? phoneDraft.value : savedPhoneValue
-  const phoneChanged = phoneValue.trim() !== '' && phoneValue.trim() !== savedPhoneValue
+  const savedEmailValue = selectedUser?.email ?? ''
+  const emailValue = emailDraft && emailDraft.userId === selectedUserId ? emailDraft.value : savedEmailValue
+  const emailChanged = emailValue.trim() !== '' && emailValue.trim().toLowerCase() !== savedEmailValue.trim().toLowerCase()
   const selectedRequest = pendingRequests.find((request) => request.id === selectedRequestId) ?? null
   const approvalRole = roles.find((role) => role.id === approvalRoleId) ?? null
   const approvalHasPortfolioAccess = approvalRole
@@ -276,34 +274,33 @@ export function LiveAccessView({ currentUser }: LiveAccessViewProps) {
     }
   }
 
-  async function savePhoneNumber(event: FormEvent<HTMLFormElement>) {
+  async function saveEmail(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
-    if (!selectedUser || !phoneChanged) return
+    if (!selectedUser || !emailChanged) return
 
-    setSavingPhone(true)
+    setSavingEmail(true)
     setAssignmentError(null)
     setMessage(null)
     try {
       const changedUser = await usersApi.update(selectedUser.id, {
         username: selectedUser.username,
         fullName: selectedUser.fullName,
-        email: selectedUser.email,
-        phoneNumber: phoneValue.trim(),
+        email: emailValue.trim(),
         roleId: selectedUser.roleId,
       })
       setUsers((current) =>
         current.map((user) => (user.id === changedUser.id ? changedUser : user)),
       )
-      setPhoneDraft(null)
+      setEmailDraft(null)
       setMessage(
-        changedUser.phoneNumberVerified
-          ? `Phone number saved for ${changedUser.fullName}.`
-          : `Phone number saved for ${changedUser.fullName}. It is confirmed by the SMS code sent the next time they change their password.`,
+        changedUser.emailVerified
+          ? `Email address saved for ${changedUser.fullName}.`
+          : `Email address saved for ${changedUser.fullName}. They confirm it from their account menu, or with the code emailed the next time they change their password.`,
       )
     } catch (requestError) {
       setAssignmentError(errorMessage(requestError))
     } finally {
-      setSavingPhone(false)
+      setSavingEmail(false)
     }
   }
 
@@ -455,7 +452,6 @@ export function LiveAccessView({ currentUser }: LiveAccessViewProps) {
                 <div>
                   <strong>@{selectedRequest.username}</strong>
                   <span>{selectedRequest.email}</span>
-                  <span>{selectedRequest.phoneNumber ?? 'No phone number given'}</span>
                   <small>{new Date(selectedRequest.requestedAt).toLocaleString()}</small>
                 </div>
                 <label>
@@ -676,29 +672,29 @@ export function LiveAccessView({ currentUser }: LiveAccessViewProps) {
                   )}
                 </section>
 
-                <section className="lav-access-section" aria-labelledby="phone-number-title">
+                <section className="lav-access-section" aria-labelledby="email-address-title">
                   <div className="lav-access-section-head">
                     <div>
-                      <h3 id="phone-number-title">Phone number</h3>
-                      <p>Codes for password changes are sent here by SMS. A new number must be confirmed again.</p>
+                      <h3 id="email-address-title">Email address</h3>
+                      <p>Codes to change or reset the password are emailed here. A new address must be confirmed again.</p>
                     </div>
-                    <span className={`lav-count-chip ${selectedUser.phoneNumberVerified ? '' : 'attention'}`}>
-                      {!selectedHasPhone ? 'Not provided' : selectedUser.phoneNumberVerified ? 'Verified' : 'Not verified'}
+                    <span className={`lav-count-chip ${selectedUser.emailVerified ? '' : 'attention'}`}>
+                      {selectedUser.emailVerified ? 'Confirmed' : 'Not confirmed'}
                     </span>
                   </div>
 
-                  <form className="lav-access-phone" onSubmit={(event) => void savePhoneNumber(event)}>
+                  <form className="lav-access-email" onSubmit={(event) => void saveEmail(event)}>
                     <label className="lav-field">
-                      <span>Mobile number</span>
+                      <span>Email address</span>
                       <input
-                        type="tel"
-                        inputMode="tel"
+                        type="email"
+                        inputMode="email"
                         autoComplete="off"
-                        maxLength={30}
-                        placeholder="0712 345 678"
-                        value={phoneValue}
+                        maxLength={254}
+                        placeholder="name@company.co.ke"
+                        value={emailValue}
                         onChange={(event) => {
-                          setPhoneDraft({ userId: selectedUser.id, value: event.currentTarget.value })
+                          setEmailDraft({ userId: selectedUser.id, value: event.currentTarget.value })
                           setMessage(null)
                         }}
                       />
@@ -707,17 +703,17 @@ export function LiveAccessView({ currentUser }: LiveAccessViewProps) {
                       <button
                         type="button"
                         className="lav-button secondary"
-                        disabled={!phoneChanged || savingPhone}
-                        onClick={() => setPhoneDraft(null)}
+                        disabled={!emailChanged || savingEmail}
+                        onClick={() => setEmailDraft(null)}
                       >
                         Discard changes
                       </button>
                       <button
                         type="submit"
                         className="lav-button primary"
-                        disabled={!phoneChanged || savingPhone}
+                        disabled={!emailChanged || savingEmail}
                       >
-                        {savingPhone ? 'Saving…' : 'Save phone number'}
+                        {savingEmail ? 'Saving…' : 'Save email address'}
                       </button>
                     </div>
                   </form>

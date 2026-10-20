@@ -5,7 +5,7 @@ export interface UserResponseDto {
   fullName: string
   email: string
   phoneNumber: string
-  phoneNumberVerified: boolean
+  emailVerified: boolean
   isActive: boolean
   createdAt: Date
   roleId: number

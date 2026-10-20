@@ -20,13 +20,13 @@ const policies: Record<RateLimitPolicyName, Policy> = {
     windowMs: 10 * 60_000,
     partitionKey: context => context.user?.findFirstValue(ClaimTypes.NameIdentifier) ?? context.remoteIpAddress,
   },
-  // Slows current-password guessing on the SMS code endpoints; SMS volume itself is capped in the database.
+  // Slows current-password guessing on the email code endpoints; email volume itself is capped in the database.
   'verification-code': {
     permitLimit: 10,
     windowMs: 10 * 60_000,
     partitionKey: context => context.user?.findFirstValue(ClaimTypes.NameIdentifier) ?? context.remoteIpAddress,
   },
-  // Anonymous forgotten-password requests; each account also has its own SMS limits in the database.
+  // Anonymous forgotten-password requests; each account also has its own email limits in the database.
   'password-reset': {
     permitLimit: 10,
     windowMs: 10 * 60_000,
