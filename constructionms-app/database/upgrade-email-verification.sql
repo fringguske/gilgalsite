@@ -1,5 +1,5 @@
 -- =============================================================================
--- UPGRADE: emailed verification codes (Resend).
+-- UPGRADE: emailed verification codes.
 --
 -- Run this once in the Supabase SQL Editor on a database that was created from
 -- an earlier copy of supabase-schema.sql (before it contained the "Emailed

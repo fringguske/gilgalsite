@@ -4,7 +4,7 @@ const nextConfig: NextConfig = {
   // This project is an API-only Next.js app: every route lives under src/app/api.
   poweredByHeader: false,
   reactStrictMode: true,
-  serverExternalPackages: ['postgres', 'bcryptjs'],
+  serverExternalPackages: ['postgres', 'bcryptjs', 'nodemailer'],
   async headers() {
     return [
       {

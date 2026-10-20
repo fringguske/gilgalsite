@@ -6318,7 +6318,7 @@ ALTER TABLE "PurchaseOrders" ADD CONSTRAINT "CK_PurchaseOrders_Actors_Distinct" 
 
 ALTER TABLE "PurchaseOrders" ADD CONSTRAINT "CK_PurchaseOrders_CancellationActor" CHECK ("Status" <> 'Cancelled' OR (("ApprovedAt" IS NOT NULL OR ("SubmittedAt" IS NOT NULL AND "RejectedAt" IS NULL)) AND "CancelledByUserId" <> "CreatedByUserId") OR (("ApprovedAt" IS NULL AND ("SubmittedAt" IS NULL OR "RejectedAt" IS NOT NULL)) AND "CancelledByUserId" = "CreatedByUserId") OR ("ApprovedByUserId" = "CreatedByUserId" AND "CancelledByUserId" = "CreatedByUserId"));
 
--- Emailed verification codes (Resend). Databases created before this section
+-- Emailed verification codes. Databases created before this section
 -- existed get it from database/upgrade-email-verification.sql.
 ALTER TABLE "Users" ADD "EmailVerifiedAt" timestamp with time zone;
 

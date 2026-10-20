@@ -29,7 +29,7 @@ import { MyTasksService } from '@/ConstructionMS.Infrastructure/Services/Tasks/M
 import { InAppNotificationService } from '@/ConstructionMS.Infrastructure/Services/Tasks/InAppNotificationService'
 import { SupabasePrivateEvidenceStorage } from '@/ConstructionMS.Infrastructure/Services/Evidence/SupabasePrivateEvidenceStorage'
 import { EvidenceService } from '@/ConstructionMS.Infrastructure/Services/Evidence/EvidenceService'
-import { ResendEmailSender } from '@/ConstructionMS.Infrastructure/Services/Email/ResendEmailSender'
+import { SmtpEmailSender } from '@/ConstructionMS.Infrastructure/Services/Email/SmtpEmailSender'
 import { HttpCurrentActorContext } from './Common/HttpCurrentActorContext'
 import type { HttpContext } from './Common/HttpContext'
 
@@ -54,9 +54,9 @@ function lazy<T>(factory: () => T): () => T {
 /** Evidence storage is a singleton, like AddSingleton<IEvidenceStorage>. */
 const evidenceStorage = lazy(() => new SupabasePrivateEvidenceStorage(evidenceStorageOptions()))
 
-/** Null while Resend is not configured, which turns emailed verification codes off. */
+/** Null while SMTP is not configured, which turns emailed verification codes off. */
 const emailSender = lazy(() => emailVerificationOptions().enabled
-  ? new ResendEmailSender(emailVerificationOptions(), createLogger('ResendEmailSender'))
+  ? new SmtpEmailSender(emailVerificationOptions(), createLogger('SmtpEmailSender'))
   : null)
 
 /**

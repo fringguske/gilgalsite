@@ -10,7 +10,7 @@ export interface CurrentUserDto {
   email: string
   /** True once a code emailed to the address has been used, so a forgotten password can be reset. */
   emailVerified: boolean
-  /** True when Resend is configured, so password changes need an emailed code. */
+  /** True when SMTP is configured, so password changes need an emailed code. */
   emailVerificationEnabled: boolean
   role: string
   actualRole: string
