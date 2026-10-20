@@ -8,6 +8,7 @@ export const SecurityAuditEventTypes = Object.freeze({
   UserActivated: 'UserActivated',
   UserDeactivated: 'UserDeactivated',
   PhoneNumberVerified: 'PhoneNumberVerified',
+  PasswordReset: 'PasswordReset',
 })
 
 export const SecurityAuditSources = Object.freeze({

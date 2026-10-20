@@ -10,7 +10,7 @@
 --   * "AccessRequests"."PhoneNumber"         - collected on the Request access form;
 --   * "Users"."PhoneNumberVerifiedAt"        - set once a code sent to the number is used;
 --   * "PhoneVerificationCodes"               - hashed one-time codes, 10-minute lifetime;
---   * the 'PhoneNumberVerified' security audit event type.
+--   * the 'PhoneNumberVerified' and 'PasswordReset' security audit event types.
 -- =============================================================================
 
 BEGIN;
@@ -32,7 +32,7 @@ CREATE TABLE IF NOT EXISTS "PhoneVerificationCodes" (
     "FailedAttempts" integer NOT NULL DEFAULT 0,
     "ConsumedAt" timestamp with time zone,
     CONSTRAINT "PK_PhoneVerificationCodes" PRIMARY KEY ("Id"),
-    CONSTRAINT "CK_PhoneVerificationCodes_Purpose" CHECK ("Purpose" IN ('ChangePassword', 'VerifyPhoneNumber')),
+    CONSTRAINT "CK_PhoneVerificationCodes_Purpose" CHECK ("Purpose" IN ('ChangePassword', 'VerifyPhoneNumber', 'ResetPassword')),
     CONSTRAINT "CK_PhoneVerificationCodes_PhoneNumber" CHECK ("PhoneNumber" ~ '^\+[1-9][0-9]{7,14}$'),
     CONSTRAINT "CK_PhoneVerificationCodes_Expiry" CHECK ("ExpiresAt" > "CreatedAt"),
     CONSTRAINT "CK_PhoneVerificationCodes_FailedAttempts" CHECK ("FailedAttempts" >= 0),
@@ -41,9 +41,14 @@ CREATE TABLE IF NOT EXISTS "PhoneVerificationCodes" (
 
 CREATE INDEX IF NOT EXISTS "IX_PhoneVerificationCodes_UserId_CreatedAt" ON "PhoneVerificationCodes" ("UserId", "CreatedAt");
 
+-- Re-applied so a database that ran an earlier copy of this script also accepts 'ResetPassword'.
+ALTER TABLE "PhoneVerificationCodes" DROP CONSTRAINT IF EXISTS "CK_PhoneVerificationCodes_Purpose";
+
+ALTER TABLE "PhoneVerificationCodes" ADD CONSTRAINT "CK_PhoneVerificationCodes_Purpose" CHECK ("Purpose" IN ('ChangePassword', 'VerifyPhoneNumber', 'ResetPassword'));
+
 ALTER TABLE "SecurityAuditEvents" DROP CONSTRAINT IF EXISTS "CK_SecurityAuditEvents_EventType";
 
-ALTER TABLE "SecurityAuditEvents" ADD CONSTRAINT "CK_SecurityAuditEvents_EventType" CHECK ("EventType" IN ('UsernameChanged', 'PasswordChanged', 'AdministratorPasswordReset', 'UserCreated', 'UserProfileUpdated', 'UserRoleChanged', 'UserActivated', 'UserDeactivated', 'PhoneNumberVerified'));
+ALTER TABLE "SecurityAuditEvents" ADD CONSTRAINT "CK_SecurityAuditEvents_EventType" CHECK ("EventType" IN ('UsernameChanged', 'PasswordChanged', 'AdministratorPasswordReset', 'UserCreated', 'UserProfileUpdated', 'UserRoleChanged', 'UserActivated', 'UserDeactivated', 'PhoneNumberVerified', 'PasswordReset'));
 
 -- Same Supabase hardening as every other table: RLS on with no policies, and no
 -- direct access for the Data API roles.

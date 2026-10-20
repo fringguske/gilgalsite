@@ -28,6 +28,32 @@ export const ConfirmPhoneNumberRequestDto = dto({
 })
 export type ConfirmPhoneNumberRequestDto = InferDto<typeof ConfirmPhoneNumberRequestDto>
 
+const UsernamePattern = '^[a-zA-Z0-9][a-zA-Z0-9._-]*$'
+
+/** Forgotten password, step 1: texts a code to the account's confirmed phone number, if it has one. */
+export const SendPasswordResetCodeRequestDto = dto({
+  username: f.string().required().stringLength(50, 3).regex(UsernamePattern),
+})
+export type SendPasswordResetCodeRequestDto = InferDto<typeof SendPasswordResetCodeRequestDto>
+
+/** Forgotten password, step 2: the SMS code replaces the current password. */
+export const ResetPasswordRequestDto = dto({
+  username: f.string().required().stringLength(50, 3).regex(UsernamePattern),
+  verificationCode: f.string().required().regex(VerificationCodePattern, VerificationCodeMessage),
+  newPassword: f.string().required().stringLength(72, 12),
+  confirmNewPassword: f.string().required().compare('newPassword', 'Passwords do not match.'),
+}, (v) => {
+  const results: ValidationResult[] = []
+  if (v.newPassword !== null && utf8ByteCount(v.newPassword) > 72) {
+    results.push(validationResult('New password cannot exceed 72 UTF-8 bytes.', ['NewPassword']))
+  }
+  if (v.confirmNewPassword !== null && utf8ByteCount(v.confirmNewPassword) > 72) {
+    results.push(validationResult('Password confirmation cannot exceed 72 UTF-8 bytes.', ['ConfirmNewPassword']))
+  }
+  return results
+})
+export type ResetPasswordRequestDto = InferDto<typeof ResetPasswordRequestDto>
+
 export interface VerificationCodeSentDto {
   /** The number the code went to, masked (+254••••••678). */
   sentTo: string

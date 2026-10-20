@@ -30,6 +30,7 @@ import {
 import { EvidenceFiles } from './EvidenceReferenceField'
 import { CeoOverview } from './CeoOverview'
 import { OperationalOverview } from './OperationalOverview'
+import { PendingVerification } from './pendingVerification'
 import './live-api.css'
 import './ceo-overview.css'
 
@@ -377,15 +378,41 @@ export function LiveLoginView({ onAuthenticated, onBack, initialMode = 'signin' 
   const usernameId = useId()
   const passwordId = useId()
   const confirmPasswordId = useId()
-  const [mode, setMode] = useState<'signin' | 'signup'>(initialMode)
+  const codeId = useId()
+  // A reload while the person reads the SMS returns them to the code step, not to the start.
+  const [resumedReset] = useState(() => initialMode === 'signup' ? null : PendingVerification.read('ResetPasswordSignIn'))
+  const [mode, setMode] = useState<'signin' | 'signup' | 'reset'>(resumedReset ? 'reset' : initialMode)
   const [email, setEmail] = useState('')
   const [phoneNumber, setPhoneNumber] = useState('')
-  const [username, setUsername] = useState('')
+  const [username, setUsername] = useState(resumedReset?.username ?? '')
   const [password, setPassword] = useState('')
   const [confirmPassword, setConfirmPassword] = useState('')
+  const [code, setCode] = useState('')
+  const [resetCodeExpiresAt, setResetCodeExpiresAt] = useState<string | null>(resumedReset?.expiresAt ?? null)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [message, setMessage] = useState<string | null>(null)
+  // Forgotten password: step 1 asks for the username, step 2 for the SMS code and the new password.
+  const choosingNewPassword = mode === 'reset' && resetCodeExpiresAt !== null
+
+  function switchMode(next: 'signin' | 'signup' | 'reset') {
+    setMode(next)
+    setError(null)
+    setMessage(null)
+    setPassword('')
+    setConfirmPassword('')
+    setCode('')
+    setResetCodeExpiresAt(null)
+    PendingVerification.clear()
+  }
+
+  async function requestResetCode() {
+    await authApi.sendPasswordResetCode({ username: username.trim() })
+    const expiresAt = PendingVerification.expiresAtFromNow()
+    PendingVerification.save({ flow: 'ResetPasswordSignIn', username: username.trim(), expiresAt })
+    setCode('')
+    setResetCodeExpiresAt(expiresAt)
+  }
 
   useEffect(() => {
     const robots = document.querySelector<HTMLMetaElement>('meta[name="robots"]')
@@ -418,6 +445,16 @@ export function LiveLoginView({ onAuthenticated, onBack, initialMode = 'signin' 
         setConfirmPassword('')
         setMode('signin')
         setMessage('Request sent. An Administrator must approve your role before you can sign in.')
+      } else if (mode === 'reset' && resetCodeExpiresAt === null) {
+        await requestResetCode()
+      } else if (mode === 'reset') {
+        if (password !== confirmPassword) {
+          setError('Passwords do not match.')
+          return
+        }
+        await authApi.resetPassword({ username: username.trim(), verificationCode: code, newPassword: password, confirmNewPassword: confirmPassword })
+        switchMode('signin')
+        setMessage('Password reset. Sign in with your new password.')
       } else {
         const user = await authApi.login({ username: username.trim(), password })
         onAuthenticated(user)
@@ -446,16 +483,22 @@ export function LiveLoginView({ onAuthenticated, onBack, initialMode = 'signin' 
       <section className="lav-login-panel">
         <form className="lav-login-card" onSubmit={submit}>
           <div className="lav-login-tabs" role="tablist" aria-label="Account access">
-            <button type="button" className={mode === 'signin' ? 'active' : ''} onClick={() => { setMode('signin'); setError(null); setMessage(null); setPassword(''); setConfirmPassword('') }}>Sign in</button>
-            <button type="button" className={mode === 'signup' ? 'active' : ''} onClick={() => { setMode('signup'); setError(null); setMessage(null); setPassword(''); setConfirmPassword('') }}>Request access</button>
+            <button type="button" className={mode === 'signin' ? 'active' : ''} onClick={() => switchMode('signin')}>Sign in</button>
+            <button type="button" className={mode === 'signup' ? 'active' : ''} onClick={() => switchMode('signup')}>Request access</button>
           </div>
           <header>
-            <span className="lav-kicker">{mode === 'signin' ? 'Staff access' : 'New account'}</span>
-            <h2>{mode === 'signin' ? 'Sign in' : 'Request to join'}</h2>
+            <span className="lav-kicker">{mode === 'signin' ? 'Staff access' : mode === 'signup' ? 'New account' : 'Forgot password'}</span>
+            <h2>{mode === 'signin' ? 'Sign in' : mode === 'signup' ? 'Request to join' : 'Reset your password'}</h2>
           </header>
 
           {error && <Notice tone="error">{error}</Notice>}
           {message && <Notice tone="success">{message}</Notice>}
+          {mode === 'reset' && resetCodeExpiresAt === null && (
+            <p className="lav-login-note">Enter your username. A code will be sent by SMS to the phone number you confirmed in your account.</p>
+          )}
+          {choosingNewPassword && (
+            <p className="lav-login-note">If <strong>@{username.trim()}</strong> has a confirmed phone number, a code has been sent to it. It works until {PendingVerification.formatExpiry(resetCodeExpiresAt)}.</p>
+          )}
 
           {mode === 'signup' && (
             <label className="lav-field" htmlFor={emailId}>
@@ -477,7 +520,7 @@ export function LiveLoginView({ onAuthenticated, onBack, initialMode = 'signin' 
 
           {mode === 'signup' && (
             <label className="lav-field" htmlFor={phoneNumberId}>
-              <span>Mobile number <small>· password-change codes are sent here by SMS</small></span>
+              <span>Mobile number <small>· codes to change or reset your password are sent here by SMS</small></span>
               <input
                 id={phoneNumberId}
                 type="tel"
@@ -493,7 +536,7 @@ export function LiveLoginView({ onAuthenticated, onBack, initialMode = 'signin' 
             </label>
           )}
 
-          <label className="lav-field" htmlFor={usernameId}>
+          {!choosingNewPassword && <label className="lav-field" htmlFor={usernameId}>
             <span>Username</span>
             <input
               id={usernameId}
@@ -507,28 +550,48 @@ export function LiveLoginView({ onAuthenticated, onBack, initialMode = 'signin' 
               pattern="[A-Za-z0-9][A-Za-z0-9._-]*"
               placeholder="your.username"
               required
-              autoFocus={mode === 'signin'}
+              autoFocus={mode !== 'signup'}
             />
-          </label>
+          </label>}
 
-          <label className="lav-field" htmlFor={passwordId}>
-            <span>{mode === 'signup' ? 'Set password' : 'Password'}</span>
+          {choosingNewPassword && (
+            <label className="lav-field" htmlFor={codeId}>
+              <span>Verification code</span>
+              <input
+                id={codeId}
+                name="verification-code"
+                value={code}
+                onChange={(event) => setCode(event.currentTarget.value.replace(/\D/g, ''))}
+                autoComplete="one-time-code"
+                inputMode="numeric"
+                pattern="[0-9]{6}"
+                minLength={6}
+                maxLength={6}
+                placeholder="6-digit code"
+                required
+                autoFocus
+              />
+            </label>
+          )}
+
+          {(mode !== 'reset' || choosingNewPassword) && <label className="lav-field" htmlFor={passwordId}>
+            <span>{mode === 'signup' ? 'Set password' : mode === 'reset' ? 'New password' : 'Password'}</span>
             <input
               id={passwordId}
               type="password"
               name="password"
               value={password}
               onChange={(event) => setPassword(event.currentTarget.value)}
-              autoComplete={mode === 'signup' ? 'new-password' : 'current-password'}
-              minLength={mode === 'signup' ? 12 : 1}
+              autoComplete={mode === 'signin' ? 'current-password' : 'new-password'}
+              minLength={mode === 'signin' ? 1 : 12}
               maxLength={72}
               required
             />
-          </label>
+          </label>}
 
-          {mode === 'signup' && (
+          {(mode === 'signup' || choosingNewPassword) && (
             <label className="lav-field" htmlFor={confirmPasswordId}>
-              <span>Confirm password</span>
+              <span>{mode === 'reset' ? 'Confirm new password' : 'Confirm password'}</span>
               <input
                 id={confirmPasswordId}
                 type="password"
@@ -544,8 +607,30 @@ export function LiveLoginView({ onAuthenticated, onBack, initialMode = 'signin' 
           )}
 
           <button className="lav-button primary wide" type="submit" disabled={busy}>
-            {busy ? (mode === 'signin' ? 'Signing in…' : 'Sending request…') : (mode === 'signin' ? 'Sign in' : 'Send access request')}
+            {busy
+              ? (mode === 'signin' ? 'Signing in…' : mode === 'signup' ? 'Sending request…' : choosingNewPassword ? 'Resetting…' : 'Sending code…')
+              : (mode === 'signin' ? 'Sign in' : mode === 'signup' ? 'Send access request' : choosingNewPassword ? 'Reset password' : 'Send code')}
           </button>
+
+          {mode === 'signin' && (
+            <div className="lav-login-links">
+              <button type="button" onClick={() => switchMode('reset')}>Forgot password?</button>
+            </div>
+          )}
+
+          {mode === 'reset' && (
+            <div className="lav-login-links">
+              {choosingNewPassword && <button type="button" disabled={busy} onClick={() => {
+                setBusy(true)
+                setError(null)
+                requestResetCode()
+                  .then(() => setMessage('Another code was requested.'))
+                  .catch((requestError: unknown) => setError(errorMessage(requestError)))
+                  .finally(() => setBusy(false))
+              }}>Send another code</button>}
+              <button type="button" onClick={() => switchMode('signin')}>Back to sign in</button>
+            </div>
+          )}
 
           {mode === 'signin' && (
             <p className="lav-login-help">Cannot sign in? Ask the Administrator to confirm that your request is approved.</p>

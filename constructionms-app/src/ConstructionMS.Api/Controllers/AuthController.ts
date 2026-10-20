@@ -5,7 +5,8 @@ import { ChangeUsernameRequestDto } from '@/ConstructionMS.Application/DTOs/Auth
 import { toCurrentUserJson, type CurrentUserDto } from '@/ConstructionMS.Application/DTOs/Auth/CurrentUserDto'
 import { LoginRequestDto } from '@/ConstructionMS.Application/DTOs/Auth/LoginRequestDto'
 import {
-  ChangePhoneNumberRequestDto, ConfirmPhoneNumberRequestDto, SendPasswordChangeCodeRequestDto,
+  ChangePhoneNumberRequestDto, ConfirmPhoneNumberRequestDto, ResetPasswordRequestDto, SendPasswordChangeCodeRequestDto,
+  SendPasswordResetCodeRequestDto,
 } from '@/ConstructionMS.Application/DTOs/Auth/PhoneVerificationDtos'
 import { RegisterAccessRequestDto } from '@/ConstructionMS.Application/DTOs/Auth/RegisterAccessRequestDto'
 import { SwitchRoleRequestDto } from '@/ConstructionMS.Application/DTOs/Auth/SwitchRoleRequestDto'
@@ -109,6 +110,24 @@ export class AuthControllerImpl extends ControllerBase {
       : this.ok(ApiResponse.ok(toCurrentUserJson(user)))
   }
 
+  /**
+   * Forgotten password: texts a code to the account's confirmed number. Answers 204 whether or not
+   * a code was sent, so it cannot be used to find out which accounts exist.
+   */
+  async sendPasswordResetCode(): Promise<ActionResult> {
+    const request = await this.fromBody(SendPasswordResetCodeRequestDto)
+    await this.credentialService.sendPasswordResetCodeAsync(request)
+    return this.noContent()
+  }
+
+  /** Sets a new password with the SMS code instead of the current password; every session ends. */
+  async resetPassword(): Promise<ActionResult> {
+    const request = await this.fromBody(ResetPasswordRequestDto)
+    await this.credentialService.resetPasswordAsync(request)
+    signOut(this.httpContext)
+    return this.noContent()
+  }
+
   async logout(): Promise<ActionResult> {
     signOut(this.httpContext)
     return this.noContent()
@@ -143,6 +162,8 @@ export const AuthController: ControllerMetadata<AuthControllerImpl> = {
     { method: 'POST', template: 'change-password', handler: c => c.changePassword() },
     { method: 'POST', template: 'phone', rateLimit: 'verification-code', handler: c => c.changePhoneNumber() },
     { method: 'POST', template: 'phone/verify', rateLimit: 'verification-code', handler: c => c.confirmPhoneNumber() },
+    { method: 'POST', template: 'password-reset/code', allowAnonymous: true, rateLimit: 'password-reset', handler: c => c.sendPasswordResetCode() },
+    { method: 'POST', template: 'password-reset', allowAnonymous: true, rateLimit: 'password-reset', handler: c => c.resetPassword() },
     { method: 'POST', template: 'logout', handler: c => c.logout() },
   ],
 }
