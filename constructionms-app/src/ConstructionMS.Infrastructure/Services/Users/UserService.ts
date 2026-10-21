@@ -141,6 +141,9 @@ export class UserService implements IUserService {
 
       const roleChanged = user.roleId !== dto.roleId
       if (roleChanged) {
+        if (id === administratorUserId) {
+          throw new InvalidOperationError('Use another Administrator account to change your own role.')
+        }
         const currentRole = await this.requireRoleNameAsync(tx, user.roleId)
         const nextRole = await this.requireRoleNameAsync(tx, dto.roleId)
         if ((currentRole === 'CEO' || currentRole === 'Administrator')

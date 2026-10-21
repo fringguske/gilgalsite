@@ -89,6 +89,9 @@ export function LiveAccessView({ currentUser }: LiveAccessViewProps) {
   const [approvalProjectIds, setApprovalProjectIds] = useState<number[]>([])
   const [emailDraft, setEmailDraft] = useState<{ userId: number; value: string } | null>(null)
   const [savingEmail, setSavingEmail] = useState(false)
+  const [roleDraft, setRoleDraft] = useState<{ userId: number; roleId: number } | null>(null)
+  const [confirmingRole, setConfirmingRole] = useState(false)
+  const [savingRole, setSavingRole] = useState(false)
 
   const selectedUser = users.find((user) => user.id === selectedUserId) ?? null
   const selectedHasPortfolioAccess = selectedUser
@@ -104,6 +107,12 @@ export function LiveAccessView({ currentUser }: LiveAccessViewProps) {
   const savedEmailValue = selectedUser?.email ?? ''
   const emailValue = emailDraft && emailDraft.userId === selectedUserId ? emailDraft.value : savedEmailValue
   const emailChanged = emailValue.trim() !== '' && emailValue.trim().toLowerCase() !== savedEmailValue.trim().toLowerCase()
+  // Administrator is never handed out here, but an existing Administrator account still shows its own role.
+  const assignableRoles = roles.filter((role) => role.roleName !== 'Administrator')
+  const roleOptions = roles.filter((role) => role.roleName !== 'Administrator' || role.id === selectedUser?.roleId)
+  const roleValue = roleDraft && roleDraft.userId === selectedUserId ? roleDraft.roleId : selectedUser?.roleId ?? null
+  const roleChanged = selectedUser !== null && roleValue !== null && roleValue !== selectedUser.roleId
+  const nextRole = roles.find((role) => role.id === roleValue) ?? null
   const selectedRequest = pendingRequests.find((request) => request.id === selectedRequestId) ?? null
   const approvalRole = roles.find((role) => role.id === approvalRoleId) ?? null
   const approvalHasPortfolioAccess = approvalRole
@@ -173,9 +182,9 @@ export function LiveAccessView({ currentUser }: LiveAccessViewProps) {
         }
 
         if (rolesResult.status === 'fulfilled') {
-          const availableRoles = rolesResult.value.items.filter((role) => role.roleName !== 'Administrator')
-          setRoles(availableRoles)
-          setApprovalRoleId(availableRoles.find((role) => role.roleName === 'Foreman')?.id ?? availableRoles[0]?.id ?? null)
+          setRoles(rolesResult.value.items)
+          // No preselected role: the Administrator has to choose one for every request.
+          setApprovalRoleId(null)
         } else if (!(rolesResult.reason instanceof DOMException && rolesResult.reason.name === 'AbortError')) {
           requestProblems.push(errorMessage(rolesResult.reason))
         }
@@ -301,6 +310,36 @@ export function LiveAccessView({ currentUser }: LiveAccessViewProps) {
       setAssignmentError(errorMessage(requestError))
     } finally {
       setSavingEmail(false)
+    }
+  }
+
+  async function saveRole() {
+    if (!selectedUser || !roleChanged || roleValue === null) return
+
+    setSavingRole(true)
+    setAssignmentError(null)
+    setMessage(null)
+    try {
+      const changedUser = await usersApi.update(selectedUser.id, {
+        username: selectedUser.username,
+        fullName: selectedUser.fullName,
+        email: selectedUser.email,
+        roleId: roleValue,
+      })
+      setUsers((current) =>
+        current.map((user) => (user.id === changedUser.id ? changedUser : user)),
+      )
+      setRoleDraft(null)
+      setConfirmingRole(false)
+      setMessage(
+        PORTFOLIO_ROLES.has(changedUser.roleName)
+          ? `${changedUser.fullName} is now ${changedUser.roleName} and can see every project. They sign in again to continue.`
+          : `${changedUser.fullName} is now ${changedUser.roleName}. Check their project access below; they sign in again to continue.`,
+      )
+    } catch (requestError) {
+      setAssignmentError(errorMessage(requestError))
+    } finally {
+      setSavingRole(false)
     }
   }
 
@@ -435,7 +474,7 @@ export function LiveAccessView({ currentUser }: LiveAccessViewProps) {
                   value={selectedRequest.id}
                   onChange={(event) => {
                     setSelectedRequestId(Number(event.currentTarget.value))
-                    setApprovalRoleId(roles.find((role) => role.roleName === 'Foreman')?.id ?? roles[0]?.id ?? null)
+                    setApprovalRoleId(null)
                     setApprovalProjectIds([])
                     setError(null)
                   }}
@@ -457,6 +496,7 @@ export function LiveAccessView({ currentUser }: LiveAccessViewProps) {
                 <label>
                   <span>Role</span>
                   <select
+                    required
                     value={approvalRoleId ?? ''}
                     onChange={(event) => {
                       const nextRoleId = Number(event.currentTarget.value)
@@ -466,8 +506,10 @@ export function LiveAccessView({ currentUser }: LiveAccessViewProps) {
                       }
                     }}
                   >
-                    {roles.map((role) => <option key={role.id} value={role.id}>{role.roleName}</option>)}
+                    <option value="" disabled>Choose role</option>
+                    {assignableRoles.map((role) => <option key={role.id} value={role.id}>{role.roleName}</option>)}
                   </select>
+                  {!approvalRoleId && <span className="lav-request-project-required">Choose a role.</span>}
                 </label>
                 {approvalHasPortfolioAccess ? (
                   <div className="lav-request-portfolio">
@@ -539,6 +581,7 @@ export function LiveAccessView({ currentUser }: LiveAccessViewProps) {
                         setSelectedUserId(user.id)
                         setAssignmentError(null)
                         setConfirmingDeactivate(false)
+                        setConfirmingRole(false)
                         setMessage(null)
                       }}
                       aria-current={selectedUserId === user.id ? 'true' : undefined}
@@ -590,6 +633,90 @@ export function LiveAccessView({ currentUser }: LiveAccessViewProps) {
               )}
 
               <div className="lav-access-body">
+                <section className="lav-access-section" aria-labelledby="account-role-title">
+                  <div className="lav-access-section-head">
+                    <div>
+                      <h3 id="account-role-title">Role</h3>
+                      <p>The role decides what this person sees and does. Changing it signs them out, and they sign in again with the new role.</p>
+                    </div>
+                    {roleChanged && <span className="lav-count-chip attention">Unsaved</span>}
+                  </div>
+
+                  {selectedIsCurrentUser ? (
+                    <div className="lav-access-self-note">
+                      <strong>This is your signed-in account</strong>
+                      <p>Use another Administrator account to change your own role.</p>
+                    </div>
+                  ) : (
+                    <>
+                      <div className="lav-field">
+                        <select
+                          aria-label={`Role for ${selectedUser.fullName}`}
+                          value={roleValue ?? ''}
+                          disabled={savingRole || roleOptions.length === 0}
+                          onChange={(event) => {
+                            setRoleDraft({ userId: selectedUser.id, roleId: Number(event.currentTarget.value) })
+                            setConfirmingRole(false)
+                            setMessage(null)
+                          }}
+                        >
+                          {roleOptions.map((role) => <option key={role.id} value={role.id}>{role.roleName}</option>)}
+                        </select>
+                      </div>
+
+                      {confirmingRole && roleChanged && nextRole ? (
+                        <div className="lav-access-confirm lav-access-role-confirm" role="group" aria-label="Confirm role change">
+                          <div>
+                            <strong>Change {selectedUser.fullName} from {selectedUser.roleName} to {nextRole.roleName}?</strong>
+                            <p>
+                              Finish anything only they can complete as {selectedUser.roleName} first, such as materials in
+                              their custody or a draft purchase order.
+                              {!PORTFOLIO_ROLES.has(nextRole.roleName) && ' Then check their project access below.'}
+                            </p>
+                          </div>
+                          <div>
+                            <button
+                              type="button"
+                              className="lav-button secondary"
+                              disabled={savingRole}
+                              onClick={() => setConfirmingRole(false)}
+                            >
+                              Cancel
+                            </button>
+                            <button
+                              type="button"
+                              className="lav-button primary"
+                              disabled={savingRole}
+                              onClick={() => void saveRole()}
+                            >
+                              {savingRole ? 'Saving…' : 'Yes, change role'}
+                            </button>
+                          </div>
+                        </div>
+                      ) : (
+                        <div className="lav-access-save-row">
+                          <button
+                            type="button"
+                            className="lav-button secondary"
+                            disabled={!roleChanged || savingRole}
+                            onClick={() => setRoleDraft(null)}
+                          >
+                            Discard changes
+                          </button>
+                          <button
+                            type="button"
+                            className="lav-button primary"
+                            disabled={!roleChanged || savingRole}
+                            onClick={() => setConfirmingRole(true)}
+                          >
+                            Change role
+                          </button>
+                        </div>
+                      )}
+                    </>
+                  )}
+                </section>
+
                 <section className="lav-access-section" aria-labelledby="project-access-title">
                   <div className="lav-access-section-head">
                     <div>

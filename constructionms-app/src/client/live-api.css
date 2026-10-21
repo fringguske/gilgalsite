@@ -3152,6 +3152,17 @@
   gap: 8px;
 }
 
+.lav-access-role-confirm {
+  margin-top: 12px;
+  border-color: #e3cbb9;
+  background: var(--lav-clay-soft);
+}
+
+.lav-access-role-confirm p {
+  color: #6b5243;
+  line-height: 1.45;
+}
+
 @media (max-width: 980px) {
   .lav-access-layout {
     grid-template-columns: 1fr;
