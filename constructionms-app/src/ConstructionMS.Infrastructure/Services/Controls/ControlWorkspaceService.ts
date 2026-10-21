@@ -104,6 +104,17 @@ const latestReviewOutcome = sql<string | null>`(
   ORDER BY review."ReviewSequence" DESC
   LIMIT 1)`
 
+/**
+ * A delivery the Storekeeper recorded straight into usable stock, which needs no Engineer check
+ * (the same rule as the Engineer's delivery-check list). Qualified by hand so it is safe in any query.
+ */
+const postedToUsableStock = sql<boolean>`EXISTS (
+  SELECT 1 FROM "StockLedgerEntries" AS entry
+  WHERE entry."ReferenceType" = 'GoodsReceipt'
+    AND entry."ReferenceId" = "GoodsReceipts"."Id"
+    AND entry."MovementType" = 'Receipt'
+    AND entry."QuantityDelta" > 0)`
+
 export class ControlWorkspaceService implements IControlWorkspaceService {
   private readonly events: ControlEventWriter
 
@@ -1635,7 +1646,8 @@ async function getPeriodBlockersAsync(db: DbExecutor, period: OperationalPeriodR
         eq(goodsReceipts.projectId, period.projectId),
         lt(goodsReceipts.receivedAt, endExclusive),
         eq(purchaseOrderLines.requiresTechnicalAcceptance, true),
-        gt(goodsReceipts.acceptedQuantity, 0)))
+        gt(goodsReceipts.acceptedQuantity, 0),
+        not(postedToUsableStock)))
     const unresolvedTechnicalLines = new Map<number, number>()
     for (const item of technicalCandidates) {
       if (item.latestOutcome !== TechnicalAcceptanceOutcomes.Accepted && !unresolvedTechnicalLines.has(item.purchaseOrderLineId)) {
@@ -1653,7 +1665,7 @@ async function getPeriodBlockersAsync(db: DbExecutor, period: OperationalPeriodR
         .where(and(
           inArray(goodsReceipts.purchaseOrderLineId, [...unresolvedTechnicalLines.keys()]),
           gt(goodsReceipts.acceptedQuantity, 0),
-          sql`${latestReviewOutcome} = ${TechnicalAcceptanceOutcomes.Accepted}`))
+          or(sql`${latestReviewOutcome} = ${TechnicalAcceptanceOutcomes.Accepted}`, postedToUsableStock)))
         .groupBy(goodsReceipts.purchaseOrderLineId)
       const acceptedByLine = new Map(acceptedRows.map(row => [row.purchaseOrderLineId, dec(row.quantity)]))
       for (const [lineId, orderedQuantity] of unresolvedTechnicalLines) {
