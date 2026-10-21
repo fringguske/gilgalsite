@@ -30,6 +30,7 @@ import type {
   ProjectSummary,
   PurchaseOrder,
   PurchaseOrderActionRequest,
+  PlacePurchaseOrderRequest,
   PurchaseOrderListQuery,
   RecordSupplierQuoteRequest,
   ReopenSourcingRoundRequest,
@@ -815,6 +816,9 @@ export const purchaseOrdersApi = {
         status: query.status,
       },
     ),
+
+  place: (payload: PlacePurchaseOrderRequest, signal?: AbortSignal) =>
+    request<PurchaseOrder>('/purchase-orders/place', { method: 'POST', body: payload, signal }),
 
   get: (purchaseOrderId: number, signal?: AbortSignal) =>
     request<PurchaseOrder>(`/purchase-orders/${purchaseOrderId}`, { signal }),

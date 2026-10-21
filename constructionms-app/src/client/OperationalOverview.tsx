@@ -117,15 +117,13 @@ const workspaceConfig: Record<SimplifiedRole, WorkspaceConfig> = {
   },
   'Procurement Officer': {
     links: [
-      { label: 'Ready requests', to: '/sourcing' },
-      { label: 'Open sourcing', to: '/sourcing?section=open' },
+      { label: 'To order', to: '/sourcing' },
       { label: 'Purchase orders', to: '/purchase-orders' },
       { label: 'Suppliers', to: '/suppliers' },
       { label: 'Supplier invoices', to: '/finance' },
     ],
     metrics: [
-      { label: 'Ready to source', value: (_dashboard, tasks) => tasks.items.filter(task => task.taskType === 'OpenSourcing').length, attention: value => value > 0 },
-      { label: 'Sourcing open', value: (_dashboard, tasks) => tasks.items.filter(task => task.taskType === 'CompleteSourcing').length, attention: value => value > 0 },
+      { label: 'To order', value: (_dashboard, tasks) => tasks.items.filter(task => task.taskType === 'OpenSourcing').length, attention: value => value > 0 },
       { label: 'Orders to finish', value: (_dashboard, tasks) => tasks.items.filter(task => task.taskType === 'SubmitPurchaseOrder' || task.taskType === 'IssuePurchaseOrder').length, attention: value => value > 0 },
       { label: 'Invoices ready', value: (_dashboard, tasks) => tasks.items.filter(task => task.taskType === 'CaptureSupplierInvoice').length, attention: value => value > 0 },
     ],
@@ -165,9 +163,8 @@ function taskTarget(task: MyTask, role: SimplifiedRole) {
     return '/requisitions?view=action'
   }
   if (role === 'Procurement Officer') {
-    if (task.taskType === 'CompleteSourcing' && task.targetPath === '/sourcing') return '/sourcing?section=open'
     if ((task.taskType === 'SubmitPurchaseOrder' || task.taskType === 'IssuePurchaseOrder') && task.targetPath === '/purchase-orders') {
-      return '/purchase-orders'
+      return '/purchase-orders?section=unfinished'
     }
   }
   if (role === 'Storekeeper' && task.targetPath === '/inventory') {

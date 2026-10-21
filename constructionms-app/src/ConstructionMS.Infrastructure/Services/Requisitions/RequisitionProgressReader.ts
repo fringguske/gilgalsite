@@ -6,10 +6,7 @@ import type {
 } from '@/ConstructionMS.Application/DTOs/Requisitions/V1/RequisitionProgressDto'
 import { CustodyCloseoutStatuses, MaterialReturnStatuses } from '@/ConstructionMS.Domain/Entities/ControlWorkspaceEntities'
 import { MaterialIssueStatuses, TechnicalAcceptanceOutcomes } from '@/ConstructionMS.Domain/Entities/InventoryEntities'
-import {
-  PurchaseOrderWorkflowStates,
-  SourcingRoundWorkflowStates,
-} from '@/ConstructionMS.Domain/Entities/PurchaseOrderWorkflowStates'
+import { PurchaseOrderWorkflowStates } from '@/ConstructionMS.Domain/Entities/PurchaseOrderWorkflowStates'
 import { RequisitionTypes } from '@/ConstructionMS.Domain/Entities/Requisition'
 import { RequisitionWorkflowStates } from '@/ConstructionMS.Domain/Entities/RequisitionWorkflowStates'
 import type { DbExecutor } from '../../Data/AppDbContext'
@@ -24,7 +21,6 @@ import {
   purchaseOrderLines,
   purchaseOrders,
   requisitions,
-  sourcingRounds,
   stockBalances,
   users,
 } from '../../Data/schema'
@@ -45,7 +41,6 @@ export interface ProgressVisibility {
   notes: boolean
 }
 
-type Round = Awaited<ReturnType<typeof loadRoundsAsync>>[number]
 type Order = Awaited<ReturnType<typeof loadOrdersAsync>>[number]
 
 /** A requisition's issue voucher with everything recorded against it on site. */
@@ -73,7 +68,6 @@ interface IssueRecord {
 }
 
 interface Related {
-  rounds: Map<number, Round[]>
   orders: Map<number, Order[]>
   issues: Map<number, IssueRecord>
   balances: Map<string, number>
@@ -81,7 +75,7 @@ interface Related {
 }
 
 /**
- * Builds the progress of each requisition from its sourcing rounds, purchase orders, goods
+ * Builds the progress of each requisition from its purchase orders, goods
  * receipts, material issue, returns and custody close-out, using a fixed number of queries
  * per call regardless of how many requisitions are on the page.
  */
@@ -93,19 +87,17 @@ export async function loadRequisitionProgressAsync(
   if (sources.length === 0) return new Map()
 
   const ids = sources.map(source => source.requisition.id)
-  const rounds = groupBy(await loadRoundsAsync(db, ids), round => round.requisitionId)
   const orders = groupBy(await loadOrdersAsync(db, ids), order => order.order.requisitionId)
   const issues = await loadIssuesAsync(db, ids)
 
-  // Only an untouched site-use request needs the store balance: it decides whether the
-  // request will be issued from stock or has to be bought first.
+  // A site-use request with no order and no issue yet needs the store balance: it decides
+  // whether the Storekeeper issues it from stock or Procurement has to buy it first.
   const needingBalance = sources
     .map(source => source.requisition)
     .filter(requisition => requisition.requestType === RequisitionTypes.SiteUse
       && requisition.status !== RequisitionWorkflowStates.Rejected
       && !issues.has(requisition.id)
-      && !rounds.has(requisition.id)
-      && !orders.has(requisition.id))
+      && !(orders.get(requisition.id) ?? []).some(item => PurchaseOrderWorkflowStates.Live.has(item.order.status)))
   const balances = await loadBalancesAsync(db, needingBalance)
 
   const userNames = visibility.names
@@ -123,7 +115,7 @@ export async function loadRequisitionProgressAsync(
     ])
     : new Map<number, string>()
 
-  const related: Related = { rounds, orders, issues, balances, userNames }
+  const related: Related = { orders, issues, balances, userNames }
   return new Map(sources.map(source => [source.requisition.id, buildProgress(source, related, visibility)]))
 }
 
@@ -134,7 +126,6 @@ function buildProgress(source: ProgressSource, related: Related, visibility: Pro
   const name = (userId: number | null | undefined) =>
     visibility.names && userId != null ? related.userNames.get(userId) ?? null : null
   const siteUse = requisition.requestType === RequisitionTypes.SiteUse
-  const rounds = related.rounds.get(requisition.id) ?? []
   const orders = related.orders.get(requisition.id) ?? []
   const record = related.issues.get(requisition.id) ?? null
   const issue = record?.issue ?? null
@@ -143,15 +134,11 @@ function buildProgress(source: ProgressSource, related: Related, visibility: Pro
 
   const liveOrder = orders.findLast(item => PurchaseOrderWorkflowStates.Live.has(item.order.status)) ?? null
   const endedOrder = orders.findLast(item => !PurchaseOrderWorkflowStates.Live.has(item.order.status)) ?? null
-  const currentRound = rounds.findLast(round => round.status === SourcingRoundWorkflowStates.Open
-    || round.status === SourcingRoundWorkflowStates.Awarded) ?? null
-  const latestRound = rounds.at(-1) ?? null
   const stockCovers = dec(related.balances.get(balanceKey(requisition.projectId, requisition.materialId)) ?? 0)
     .gte(requisition.quantity)
-  // Store replenishment is always bought; a site-use request is bought when buying has
-  // started, or when nothing has happened yet and the store cannot cover it.
-  const buys = !siteUse || liveOrder !== null || currentRound !== null
-    || (issue === null && (orders.length > 0 || rounds.length > 0 || !stockCovers))
+  // Store replenishment is always bought. A site-use request is bought when it has an order,
+  // or when it has not been issued yet and the store cannot cover it (the My work rule too).
+  const buys = !siteUse || liveOrder !== null || (issue === null && !stockCovers)
   const lastReceipt = liveOrder?.receipts.at(-1) ?? null
 
   const journey = new Journey()
@@ -199,86 +186,57 @@ function buildProgress(source: ProgressSource, related: Related, visibility: Pro
   })
 
   if (buys) {
-    journey.add({ key: 'quotes', label: 'Supplier quotes', role: 'Procurement Officer' }, () => {
-      const quotes = (round: Round) => `${round.quoteCount} quote${round.quoteCount === 1 ? '' : 's'}`
+    journey.add({ key: 'order', label: 'Ordered from supplier', role: 'Procurement Officer' }, () => {
       if (liveOrder !== null) {
-        const round = currentRound ?? latestRound
-        return { kind: 'done', at: liveOrder.order.createdAt, detail: round === null ? null : `${quotes(round)} received` }
-      }
-      if (currentRound?.status === SourcingRoundWorkflowStates.Open) {
-        return {
-          kind: 'current',
-          headline: 'Procurement is collecting supplier quotes',
-          waitingOn: 'Procurement Officer',
-          since: currentRound.createdAt,
-          detail: `${quotes(currentRound)} so far`,
-          expectedBy: currentRound.quoteDueAt?.toISOString() ?? null,
+        const { order } = liveOrder
+        const reference = order.purchaseOrderNumber
+        switch (order.status) {
+          case PurchaseOrderWorkflowStates.Issued:
+            return { kind: 'done', at: order.issuedAt, reference, actorName: name(order.issuedByUserId), detail: 'Sent to the supplier' }
+          // Orders started on the old quote screens can still be part-way through.
+          case PurchaseOrderWorkflowStates.Submitted:
+            return {
+              kind: 'current',
+              headline: 'Purchase order waiting for Supervisor approval',
+              waitingOn: 'Supervisor',
+              since: order.submittedAt ?? order.createdAt,
+              reference,
+            }
+          case PurchaseOrderWorkflowStates.Approved:
+            return {
+              kind: 'current',
+              headline: 'Order approved, waiting for Procurement to send it to the supplier',
+              waitingOn: 'Procurement Officer',
+              since: order.approvedAt ?? order.createdAt,
+              reference,
+            }
+          default:
+            return {
+              kind: 'current',
+              headline: 'Procurement is preparing the purchase order',
+              waitingOn: 'Procurement Officer',
+              since: order.createdAt,
+              reference,
+            }
         }
       }
 
       const orderEndedAt = endedOrder?.order.cancelledAt ?? endedOrder?.order.rejectedAt ?? null
-      const roundEndedAt = latestRound?.status === SourcingRoundWorkflowStates.Closed
-        || latestRound?.status === SourcingRoundWorkflowStates.Cancelled
-        ? latestRound.closedAt
-        : null
-      if (orderEndedAt !== null && (roundEndedAt === null || orderEndedAt >= roundEndedAt)) {
-        const ending = endedOrder!.order.status === PurchaseOrderWorkflowStates.Rejected ? 'rejected' : 'cancelled'
+      if (endedOrder !== null && orderEndedAt !== null) {
+        const ending = endedOrder.order.status === PurchaseOrderWorkflowStates.Rejected ? 'rejected' : 'cancelled'
         return {
           kind: 'current',
-          headline: 'Waiting for Procurement to source it again',
+          headline: 'Waiting for Procurement to order it again',
           waitingOn: 'Procurement Officer',
           since: orderEndedAt,
-          detail: `Purchase order ${endedOrder!.order.purchaseOrderNumber} was ${ending}.`,
-        }
-      }
-      if (roundEndedAt !== null) {
-        return {
-          kind: 'current',
-          headline: 'Waiting for Procurement to source it again',
-          waitingOn: 'Procurement Officer',
-          since: roundEndedAt,
-          detail: `The last sourcing round was ${latestRound!.status.toLowerCase()} without an order.`,
+          detail: `Purchase order ${endedOrder.order.purchaseOrderNumber} was ${ending}.`,
         }
       }
       return {
         kind: 'current',
-        headline: siteUse ? 'The store is short, waiting for Procurement to start buying' : 'Waiting for Procurement to start buying',
+        headline: siteUse ? 'The store is short, waiting for Procurement to order it' : 'Waiting for Procurement to order it',
         waitingOn: 'Procurement Officer',
         since: requisition.approvedAt ?? requisition.updatedAt,
-      }
-    })
-
-    journey.add({ key: 'order', label: 'Purchase order', role: 'Procurement Officer' }, () => {
-      if (liveOrder === null) return null
-      const { order } = liveOrder
-      const reference = order.purchaseOrderNumber
-      switch (order.status) {
-        case PurchaseOrderWorkflowStates.Issued:
-          return { kind: 'done', at: order.issuedAt, reference, actorName: name(order.issuedByUserId), detail: 'Sent to the supplier' }
-        case PurchaseOrderWorkflowStates.Submitted:
-          return {
-            kind: 'current',
-            headline: 'Purchase order waiting for Supervisor approval',
-            waitingOn: 'Supervisor',
-            since: order.submittedAt ?? order.createdAt,
-            reference,
-          }
-        case PurchaseOrderWorkflowStates.Approved:
-          return {
-            kind: 'current',
-            headline: 'Order approved, waiting for Procurement to send it to the supplier',
-            waitingOn: 'Procurement Officer',
-            since: order.approvedAt ?? order.createdAt,
-            reference,
-          }
-        default:
-          return {
-            kind: 'current',
-            headline: 'Procurement is preparing the purchase order',
-            waitingOn: 'Procurement Officer',
-            since: order.createdAt,
-            reference,
-          }
       }
     })
 
@@ -505,25 +463,6 @@ class Journey {
   }
 }
 
-async function loadRoundsAsync(db: DbExecutor, requisitionIds: number[]) {
-  return await db
-    .select({
-      requisitionId: sourcingRounds.requisitionId,
-      status: sourcingRounds.status,
-      quoteDueAt: sourcingRounds.quoteDueAt,
-      createdAt: sourcingRounds.createdAt,
-      closedAt: sourcingRounds.closedAt,
-      // Spelled out in full: drizzle leaves column names unqualified in a single-table select,
-      // which would make the subquery compare the quote table with itself.
-      quoteCount: sql<number>`(
-        SELECT count(*)::integer FROM "SupplierQuotes" AS quote
-        WHERE quote."SourcingRoundId" = "SourcingRounds"."Id")`,
-    })
-    .from(sourcingRounds)
-    .where(inArray(sourcingRounds.requisitionId, requisitionIds))
-    .orderBy(asc(sourcingRounds.createdAt), asc(sourcingRounds.id))
-}
-
 async function loadOrdersAsync(db: DbExecutor, requisitionIds: number[]) {
   // A purchase order has exactly one line (PurchaseOrderInvariant), so the join keeps one row per order.
   const orders = await db
@@ -558,7 +497,8 @@ async function loadOrdersAsync(db: DbExecutor, requisitionIds: number[]) {
       acceptedQuantity: goodsReceipts.acceptedQuantity,
       receivedByUserId: goodsReceipts.receivedByUserId,
       receivedAt: goodsReceipts.receivedAt,
-      // Qualified by hand for the same reason as quoteCount above.
+      // Spelled out in full: drizzle leaves column names unqualified in a single-table select,
+      // which would make these subqueries compare a table with itself.
       latestReviewOutcome: sql<string | null>`(
         SELECT review."Outcome" FROM "GoodsReceiptTechnicalAcceptances" AS review
         WHERE review."GoodsReceiptId" = "GoodsReceipts"."Id"

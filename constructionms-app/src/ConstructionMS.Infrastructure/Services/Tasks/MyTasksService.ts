@@ -23,10 +23,7 @@ import {
   TechnicalAcceptanceOutcomes,
 } from '@/ConstructionMS.Domain/Entities/InventoryEntities'
 import { MaterialCatalogRequestStatuses } from '@/ConstructionMS.Domain/Entities/MaterialCatalogRequest'
-import {
-  PurchaseOrderWorkflowStates,
-  SourcingRoundWorkflowStates,
-} from '@/ConstructionMS.Domain/Entities/PurchaseOrderWorkflowStates'
+import { PurchaseOrderWorkflowStates } from '@/ConstructionMS.Domain/Entities/PurchaseOrderWorkflowStates'
 import { RequisitionTypes } from '@/ConstructionMS.Domain/Entities/Requisition'
 import { RequisitionWorkflowStates } from '@/ConstructionMS.Domain/Entities/RequisitionWorkflowStates'
 import { PurchaseOrderInvariant } from '../../Common/PurchaseOrderInvariant'
@@ -58,13 +55,11 @@ import {
   purchaseOrderLines,
   purchaseOrders,
   requisitions,
-  sourcingRounds,
   stockBalances,
   stockCounts,
   stockLedgerEntries,
   stockTransfers,
   supplierInvoices,
-  supplierQuotes,
   suppliers,
   userProjectAssignments,
   users,
@@ -893,7 +888,7 @@ export class MyTasksService implements IMyTasksService {
         key: `material-catalog-review:${item.id}`, type: 'MaterialCatalogReview', title: 'Review material',
         detail: `${item.name} · ${item.unit}`, requiredRole: 'Procurement Officer',
         projectId: item.projectId, projectName: item.projectName, sourceType: 'MaterialCatalogRequest', sourceId: item.id,
-        targetPath: '/sourcing', openedAt: item.submittedAt,
+        targetPath: '/sourcing?section=catalog', openedAt: item.submittedAt,
       })
     }
 
@@ -924,12 +919,6 @@ export class MyTasksService implements IMyTasksService {
           .select({ one: sql`1` })
           .from(purchaseOrders)
           .where(and(eq(purchaseOrders.requisitionId, requisitions.id), inArray(purchaseOrders.status, liveOrderStatuses))))),
-        not(exists(this.db
-          .select({ one: sql`1` })
-          .from(sourcingRounds)
-          .where(and(
-            eq(sourcingRounds.requisitionId, requisitions.id),
-            eq(sourcingRounds.status, SourcingRoundWorkflowStates.Open))))),
         or(
           eq(requisitions.requestType, RequisitionTypes.StockReplenishment),
           not(exists(this.db
@@ -941,38 +930,10 @@ export class MyTasksService implements IMyTasksService {
               gte(stockBalances.quantityOnHand, requisitions.quantity))))))))
     for (const item of requisitionRows) {
       this.add(tasks, {
-        key: `open-sourcing:${item.id}`, type: 'OpenSourcing', title: 'Open supplier sourcing',
+        key: `open-sourcing:${item.id}`, type: 'OpenSourcing', title: 'Order from a supplier',
         detail: `${quantity(item.quantity)} ${item.unit} of ${item.materialName}`, requiredRole: 'Procurement Officer',
         projectId: item.projectId, projectName: item.projectName, sourceType: 'Requisition', sourceId: item.id,
         targetPath: '/sourcing', openedAt: item.approvedAt ?? item.updatedAt,
-      })
-    }
-
-    const rounds = await this.db
-      .select({
-        id: sourcingRounds.id,
-        createdAt: sourcingRounds.createdAt,
-        quoteDueAt: sourcingRounds.quoteDueAt,
-        projectId: requisitions.projectId,
-        projectName: projects.name,
-        materialName: materials.name,
-        quoteCount: sql<number>`(
-          SELECT count(*)::integer FROM ${supplierQuotes}
-          WHERE ${supplierQuotes.sourcingRoundId} = ${sourcingRounds.id})`,
-      })
-      .from(sourcingRounds)
-      .innerJoin(requisitions, eq(sourcingRounds.requisitionId, requisitions.id))
-      .innerJoin(projects, eq(requisitions.projectId, projects.id))
-      .innerJoin(materials, eq(requisitions.materialId, materials.id))
-      .where(and(inArray(requisitions.projectId, projectIds), eq(sourcingRounds.status, SourcingRoundWorkflowStates.Open)))
-    for (const item of rounds) {
-      const quoteCount = Number(item.quoteCount)
-      this.add(tasks, {
-        key: `complete-sourcing:${item.id}`, type: 'CompleteSourcing', title: 'Complete supplier sourcing',
-        detail: `${item.materialName} · ${quoteCount} quotation${quoteCount === 1 ? '' : 's'}`,
-        requiredRole: 'Procurement Officer', projectId: item.projectId, projectName: item.projectName,
-        sourceType: 'SourcingRound', sourceId: item.id, targetPath: '/sourcing',
-        openedAt: item.createdAt, dueAt: item.quoteDueAt,
       })
     }
 

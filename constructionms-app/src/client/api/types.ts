@@ -668,6 +668,17 @@ export interface PurchaseOrderListQuery extends PageQuery {
   status?: PurchaseOrderStatus
 }
 
+/** An order agreed with the supplier outside the system; the quantity is the approved quantity. */
+export interface PlacePurchaseOrderRequest {
+  requisitionId: number
+  supplierId: number
+  unitPrice: number
+  expectedDeliveryDate: IsoDate
+  deliveryLocation?: string | null
+  supplierReference?: string | null
+  notes?: string | null
+}
+
 export interface CreatePurchaseOrderRequest {
   requisitionId: number
   supplierQuoteId: number

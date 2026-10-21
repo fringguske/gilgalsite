@@ -138,7 +138,6 @@ const roleContextSections: Partial<Record<ConstructionRole, readonly ContextSect
     links: [
       { to: '/inventory', label: 'Current stock' },
       { to: '/requisitions', label: 'Requests' },
-      { to: '/sourcing', label: 'Buying' },
       { to: '/suppliers', label: 'Suppliers' },
       { to: '/purchase-orders', label: 'Orders' },
       { to: '/custody-close-out', label: 'Custody' },
@@ -166,7 +165,6 @@ const roleContextSections: Partial<Record<ConstructionRole, readonly ContextSect
     label: 'Materials',
     links: [
       { to: '/requisitions', label: 'Requests' },
-      { to: '/sourcing', label: 'Buying' },
       { to: '/purchase-orders', label: 'Orders' },
       { to: '/inventory', label: 'Stock controls' },
       { to: '/inventory?section=stock', label: 'Current stock' },
@@ -238,12 +236,11 @@ const roleContextSections: Partial<Record<ConstructionRole, readonly ContextSect
     paths: ['/sourcing', '/purchase-orders', '/suppliers', '/requisitions'],
     label: 'Buying',
     links: [
-      { to: '/sourcing', label: 'Ready requests' },
-      { to: '/sourcing?section=open', label: 'Sourcing' },
-      { to: '/sourcing?section=catalog', label: 'Material catalog' },
+      { to: '/sourcing', label: 'To order' },
       { to: '/purchase-orders', label: 'Purchase orders' },
-      { to: '/requisitions', label: 'Request tracker' },
       { to: '/suppliers', label: 'Suppliers' },
+      { to: '/sourcing?section=catalog', label: 'Material catalog' },
+      { to: '/requisitions', label: 'Request tracker' },
     ],
   }],
   Auditor: [{
@@ -252,7 +249,6 @@ const roleContextSections: Partial<Record<ConstructionRole, readonly ContextSect
     links: [
       { to: '/inventory', label: 'Stock' },
       { to: '/requisitions', label: 'Requests' },
-      { to: '/sourcing', label: 'Sourcing' },
       { to: '/suppliers', label: 'Suppliers' },
       { to: '/purchase-orders', label: 'Orders' },
       { to: '/custody-close-out', label: 'Custody' },
@@ -438,9 +434,8 @@ function notificationTarget(item: AppNotification, role: ConstructionRole) {
   if (role === 'Procurement Officer') {
     if (item.taskType === 'MaterialCatalogReview') return '/sourcing?section=catalog'
     if (item.taskType === 'OpenSourcing' && path === '/sourcing') return '/sourcing'
-    if (item.taskType === 'CompleteSourcing' && path === '/sourcing') return '/sourcing?section=open'
     if ((item.taskType === 'SubmitPurchaseOrder' || item.taskType === 'IssuePurchaseOrder') && path === '/purchase-orders') {
-      return '/purchase-orders'
+      return '/purchase-orders?section=unfinished'
     }
   }
   if (role === 'Storekeeper' && path === '/inventory') {
@@ -511,7 +506,6 @@ function isContextLinkActive(pathname: string, search: string, target: string) {
   const currentSection = currentParams.get('section')
 
   if (targetSection) {
-    if (targetPath === '/sourcing' && targetSection === 'open') return currentSection === 'open' || currentSection === 'history'
     return currentSection === targetSection
   }
   if (targetPath === '/finance' || targetPath === '/inventory' || targetPath === '/sourcing') return currentSection === null

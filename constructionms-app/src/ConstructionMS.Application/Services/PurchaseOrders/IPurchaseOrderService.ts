@@ -1,6 +1,7 @@
 import type { PaginatedResult } from '@/ConstructionMS.Application/Common/PaginatedResult'
 import type { CorrectPurchaseOrderRequestDto } from '@/ConstructionMS.Application/DTOs/PurchaseOrders/CorrectPurchaseOrderRequestDto'
 import type { CreatePurchaseOrderRequestDto } from '@/ConstructionMS.Application/DTOs/PurchaseOrders/CreatePurchaseOrderRequestDto'
+import type { PlacePurchaseOrderRequestDto } from '@/ConstructionMS.Application/DTOs/PurchaseOrders/PlacePurchaseOrderRequestDto'
 import type { PurchaseOrderActionRequestDto } from '@/ConstructionMS.Application/DTOs/PurchaseOrders/PurchaseOrderActionRequestDto'
 import type { PurchaseOrderResponseDto } from '@/ConstructionMS.Application/DTOs/PurchaseOrders/PurchaseOrderResponseDto'
 import type { WorkflowReasonRequestDto } from '@/ConstructionMS.Application/DTOs/PurchaseOrders/WorkflowReasonRequestDto'
@@ -18,6 +19,9 @@ export interface IPurchaseOrderService {
   getByIdAsync(id: number, actorUserId: number, actorRole: string): Promise<PurchaseOrderResponseDto | null>
 
   createAsync(dto: CreatePurchaseOrderRequestDto, actorUserId: number, actorRole: string): Promise<PurchaseOrderResponseDto>
+
+  /** Records an order agreed with the supplier outside the system and marks it as sent, in one step. */
+  placeOrderAsync(dto: PlacePurchaseOrderRequestDto, actorUserId: number, actorRole: string): Promise<PurchaseOrderResponseDto>
 
   submitAsync(id: number, dto: PurchaseOrderActionRequestDto, actorUserId: number, actorRole: string): Promise<PurchaseOrderResponseDto>
 

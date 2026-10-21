@@ -3446,3 +3446,5 @@
 .lav-access-email {
   margin-top: 12px;
 }
+.lav-po-section-nav.three-tabs{grid-template-columns:repeat(3,minmax(0,1fr))}@media(max-width:620px){.lav-po-section-nav.three-tabs{grid-template-columns:1fr}.lav-po-section-nav.three-tabs button{border-right:0;border-bottom:1px solid #cbd4db}.lav-po-section-nav.three-tabs button:last-child{border-bottom:0}}
+.lav-order-confirm{display:grid;gap:8px;margin-top:4px;padding:13px 14px;border:1px solid #e3cbb9;background:var(--lav-clay-soft,#f7eae1)}.lav-order-confirm strong{font-size:13px}.lav-order-confirm p{margin:0;color:#604a3d;font-size:12px;line-height:1.5}.lav-order-confirm .lav-form-actions{justify-content:flex-end}

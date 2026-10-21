@@ -91,9 +91,8 @@ function safeTarget(task: MyTask, role: CurrentUser['role']) {
   if (role === 'Foreman' && task.taskType === 'RequisitionRevision' && path === '/requisitions') return '/requisitions?view=action'
   if (role === 'Procurement Officer') {
     if (task.taskType === 'MaterialCatalogReview') return '/sourcing?section=catalog'
-    if (task.taskType === 'CompleteSourcing' && path === '/sourcing') return '/sourcing?section=open'
     if ((task.taskType === 'SubmitPurchaseOrder' || task.taskType === 'IssuePurchaseOrder') && path === '/purchase-orders') {
-      return '/purchase-orders'
+      return '/purchase-orders?section=unfinished'
     }
   }
   if (role === 'Storekeeper' && path === '/inventory') {

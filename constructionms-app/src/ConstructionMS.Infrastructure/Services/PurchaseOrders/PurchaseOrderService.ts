@@ -14,6 +14,7 @@ import { createPaginatedResult, type PaginatedResult } from '@/ConstructionMS.Ap
 import { SegregationOfDutiesChecker } from '@/ConstructionMS.Application/Common/SegregationOfDutiesChecker'
 import type { CorrectPurchaseOrderRequestDto } from '@/ConstructionMS.Application/DTOs/PurchaseOrders/CorrectPurchaseOrderRequestDto'
 import type { CreatePurchaseOrderRequestDto } from '@/ConstructionMS.Application/DTOs/PurchaseOrders/CreatePurchaseOrderRequestDto'
+import type { PlacePurchaseOrderRequestDto } from '@/ConstructionMS.Application/DTOs/PurchaseOrders/PlacePurchaseOrderRequestDto'
 import type { PurchaseOrderActionRequestDto } from '@/ConstructionMS.Application/DTOs/PurchaseOrders/PurchaseOrderActionRequestDto'
 import type {
   PurchaseOrderEventResponseDto,
@@ -225,6 +226,199 @@ export class PurchaseOrderService implements IPurchaseOrderService {
         requiresTechnicalAcceptance: quote.materialRequiresTechnicalAcceptance,
       })
       await tx.insert(purchaseOrderEvents).values({ ...createdEvent, purchaseOrderId: order!.id })
+      return order!.id
+    })
+
+    return await this.requireVisibleOrderAsync(orderId, actorUserId, actorRole)
+  }
+
+  /**
+   * Records an order the Procurement Officer has already agreed with the supplier, since suppliers
+   * do not use this system. Every order must still come from a supplier quote in an open sourcing
+   * round (database rule), so that round and quote are written here from the supplier and price
+   * entered. The budget is checked and committed exactly as on approval, and the order is marked
+   * as sent so Stores sees it as an expected delivery. Nothing is saved if any check fails.
+   */
+  async placeOrderAsync(
+    dto: PlacePurchaseOrderRequestDto,
+    actorUserId: number,
+    actorRole: string,
+  ): Promise<PurchaseOrderResponseDto> {
+    await PurchaseWorkflowAuthorization.validateActorAsync(
+      this.db, this.actorRoleResolver, actorUserId, actorRole, PurchaseWorkflowAuthorization.ProcurementOfficer)
+    InputNormalizer.positiveInt(dto.requisitionId, 'RequisitionId')
+    InputNormalizer.positiveInt(dto.supplierId, 'SupplierId')
+    const unitPrice = InputNormalizer.positive(dto.unitPrice, 'UnitPrice', 18, 2)
+    const deliveryDate = requireCurrentOrFutureDate(dto.expectedDeliveryDate)
+    const supplierReference = InputNormalizer.optionalText(dto.supplierReference, 'SupplierReference', 100)
+    const notes = InputNormalizer.optionalText(dto.notes, 'Notes', 1_000)
+
+    const [source] = await this.db
+      .select({
+        requisition: requisitions,
+        projectLocation: projects.location,
+        standardPrice: materials.standardPrice,
+        materialRequiresTechnicalAcceptance: materials.requiresTechnicalAcceptance,
+      })
+      .from(requisitions)
+      .innerJoin(projects, eq(requisitions.projectId, projects.id))
+      .innerJoin(materials, eq(requisitions.materialId, materials.id))
+      .where(eq(requisitions.id, dto.requisitionId))
+      .limit(1)
+    if (!source) {
+      throw new KeyNotFoundError(`Requisition with ID ${dto.requisitionId} was not found.`)
+    }
+
+    const { requisition } = source
+    if (requisition.status !== RequisitionWorkflowStates.Approved) {
+      throw new InvalidOperationError('Only an approved material request can be ordered.')
+    }
+
+    await PurchaseWorkflowAuthorization.requireProjectAssignmentAsync(
+      this.db, this.actorRoleResolver, actorUserId, actorRole, requisition.projectId)
+    await PurchaseWorkflowAuthorization.requireOperationalProjectAsync(this.db, requisition.projectId)
+    const deliveryLocation = InputNormalizer.optionalText(dto.deliveryLocation, 'DeliveryLocation', 300)
+      ?? source.projectLocation
+    const now = new Date()
+
+    const orderId = await this.db.transaction(async (tx) => {
+      await tx.execute(sql`SELECT 1 FROM "Requisitions" WHERE "Id" = ${requisition.id} FOR UPDATE`)
+      if (await hasLivePurchaseOrderAsync(tx, requisition.id)) {
+        throw new InvalidOperationError('This request already has a purchase order.')
+      }
+
+      const [supplier] = await tx
+        .select({ id: suppliers.id, isBlacklisted: suppliers.isBlacklisted })
+        .from(suppliers)
+        .where(eq(suppliers.id, dto.supplierId))
+        .limit(1)
+      if (!supplier) {
+        throw new KeyNotFoundError(`Supplier with ID ${dto.supplierId} was not found.`)
+      }
+      if (supplier.isBlacklisted) {
+        throw new InvalidOperationError('This supplier is blocked and cannot receive orders.')
+      }
+
+      // Only one round may be open per request: one left open on the old quote screens is closed.
+      const currentRounds = await tx
+        .select({ id: sourcingRounds.id, status: sourcingRounds.status })
+        .from(sourcingRounds)
+        .where(and(
+          eq(sourcingRounds.requisitionId, requisition.id),
+          inArray(sourcingRounds.status, [SourcingRoundWorkflowStates.Open, SourcingRoundWorkflowStates.Awarded])))
+      for (const current of currentRounds) {
+        if (current.status === SourcingRoundWorkflowStates.Awarded) {
+          throw new InvalidOperationError('This request already has a supplier selected. Refresh and try again.')
+        }
+        const closed = await tx
+          .update(sourcingRounds)
+          .set({ status: SourcingRoundWorkflowStates.Closed, closedAt: now })
+          .where(and(eq(sourcingRounds.id, current.id), eq(sourcingRounds.status, SourcingRoundWorkflowStates.Open)))
+          .returning({ id: sourcingRounds.id })
+        ensureTransitionWon(closed.length, 'The sourcing round was actioned by another user.')
+        await tx.insert(sourcingRoundEvents).values(newSourcingEvent(
+          current.id,
+          actorUserId,
+          actorRole,
+          'Closed',
+          SourcingRoundWorkflowStates.Open,
+          SourcingRoundWorkflowStates.Closed,
+          'Closed when the order was placed directly with a supplier.',
+          now))
+      }
+
+      const [round] = await tx
+        .insert(sourcingRounds)
+        .values({
+          requisitionId: requisition.id,
+          createdByUserId: actorUserId,
+          status: SourcingRoundWorkflowStates.Open,
+          quoteDueAt: null,
+          notes: 'Recorded with a purchase order placed directly with the supplier.',
+          createdAt: now,
+        })
+        .returning({ id: sourcingRounds.id })
+      await tx.insert(sourcingRoundEvents).values({
+        sourcingRoundId: round!.id,
+        actorUserId,
+        actorRole,
+        eventType: 'Created',
+        fromStatus: null,
+        toStatus: SourcingRoundWorkflowStates.Open,
+        notes: 'Recorded with a purchase order placed directly with the supplier.',
+        occurredAt: now,
+      })
+      const [quote] = await tx
+        .insert(supplierQuotes)
+        .values({
+          sourcingRoundId: round!.id,
+          supplierId: supplier.id,
+          recordedByUserId: actorUserId,
+          quoteReference: supplierReference ?? 'Agreed price',
+          quantityOffered: requisition.quantity,
+          unitPrice,
+          standardPriceSnapshot: source.standardPrice,
+          validUntil: null,
+          notes: null,
+          recordedAt: now,
+        })
+        .returning({ id: supplierQuotes.id })
+
+      const [order] = await tx
+        .insert(purchaseOrders)
+        .values({
+          purchaseOrderNumber: generatePurchaseOrderNumber(now),
+          projectId: requisition.projectId,
+          requisitionId: requisition.id,
+          supplierId: supplier.id,
+          supplierQuoteId: quote!.id,
+          createdByUserId: actorUserId,
+          status: PurchaseOrderWorkflowStates.Draft,
+          expectedDeliveryDate: deliveryDate,
+          deliveryLocation,
+          notes,
+          createdAt: now,
+        })
+        .returning()
+      const [line] = await tx
+        .insert(purchaseOrderLines)
+        .values({
+          purchaseOrderId: order!.id,
+          requisitionId: requisition.id,
+          materialId: requisition.materialId,
+          quantity: requisition.quantity,
+          unitPrice,
+          requiresTechnicalAcceptance: source.materialRequiresTechnicalAcceptance,
+        })
+        .returning()
+      await tx.insert(purchaseOrderEvents).values(newEvent(
+        actorUserId, actorRole, 'Created', null, PurchaseOrderWorkflowStates.Draft, notes, now, order!.id))
+
+      await this.awardAndApproveAsync(tx, {
+        order: order!,
+        projectLocation: source.projectLocation,
+        supplierIsBlacklisted: false,
+        quoteValidUntil: null,
+        sourcingRoundId: round!.id,
+        sourcingRoundStatus: SourcingRoundWorkflowStates.Open,
+        lines: [line!],
+      }, PurchaseOrderWorkflowStates.Draft, actorUserId, actorRole, null, now)
+
+      const issued = await tx
+        .update(purchaseOrders)
+        .set({ status: PurchaseOrderWorkflowStates.Issued, issuedByUserId: actorUserId, issuedAt: now })
+        .where(and(eq(purchaseOrders.id, order!.id), eq(purchaseOrders.status, PurchaseOrderWorkflowStates.Approved)))
+        .returning({ id: purchaseOrders.id })
+      ensureTransitionWon(issued.length, 'The purchase order was actioned by another user.')
+      await tx.insert(purchaseOrderEvents).values(newEvent(
+        actorUserId,
+        actorRole,
+        'Issued',
+        PurchaseOrderWorkflowStates.Approved,
+        PurchaseOrderWorkflowStates.Issued,
+        'Placed directly with the supplier.',
+        now,
+        order!.id))
       return order!.id
     })
 

@@ -5,16 +5,12 @@ import {
   materialCatalogRequestsApi,
   purchaseOrdersApi,
   requisitionsApi,
-  sourcingRoundsApi,
   suppliersApi,
   type CurrentUser,
   type MaterialCatalogRequest,
   type PurchaseOrder,
   type PurchaseOrderStatus,
   type Requisition,
-  type SourcingRound,
-  type SourcingRoundStatus,
-  type SupplierQuote,
   type SupplierSummary,
 } from './api'
 import { statusText } from './statusLabels'
@@ -43,7 +39,6 @@ interface NoticeProps {
   children: ReactNode
 }
 
-type RoundAction = 'close' | 'cancel' | 'reopen' | null
 type OrderAction =
   | 'submit'
   | 'approve'
@@ -141,22 +136,6 @@ function localDate(daysFromToday = 0): string {
   return `${year}-${month}-${day}`
 }
 
-function toIsoDateTime(localValue: string): string | null {
-  if (!localValue) return null
-  const date = new Date(localValue)
-  return Number.isNaN(date.getTime()) ? null : date.toISOString()
-}
-
-function roundStatusLabel(status: SourcingRoundStatus): string {
-  const labels: Record<SourcingRoundStatus, string> = {
-    Open: 'Collecting quotes',
-    Awarded: 'Supplier selected',
-    Closed: 'Closed without award',
-    Cancelled: 'Cancelled',
-  }
-  return labels[status]
-}
-
 function orderStatusLabel(status: PurchaseOrderStatus): string {
   const labels: Record<PurchaseOrderStatus, string> = {
     Draft: 'Draft',
@@ -169,10 +148,9 @@ function orderStatusLabel(status: PurchaseOrderStatus): string {
   return labels[status]
 }
 
-function statusTone(status: SourcingRoundStatus | PurchaseOrderStatus): string {
-  if (status === 'Approved' || status === 'Awarded' || status === 'Issued') return 'success'
+function statusTone(status: PurchaseOrderStatus): string {
+  if (status === 'Approved' || status === 'Issued') return 'success'
   if (status === 'Rejected' || status === 'Cancelled') return 'danger'
-  if (status === 'Closed') return 'return'
   return 'pending'
 }
 
@@ -188,15 +166,17 @@ function projectOptionsFrom(
     .sort((left, right) => left.name.localeCompare(right.name))
 }
 
+/**
+ * Procurement's buying page. Suppliers do not use this system, so price and delivery are agreed
+ * with them directly; the officer records the order here and it goes straight to Stores.
+ */
 export function LiveProcurementView({ currentUser }: LiveProcurementViewProps) {
   const [searchParams, setSearchParams] = useSearchParams()
-  const allowed = ['Procurement Officer', 'Supervisor', 'CEO', 'Auditor'].includes(
-    currentUser.role,
-  )
-  const [rounds, setRounds] = useState<SourcingRound[]>([])
-  const [approvedRequisitions, setApprovedRequisitions] = useState<Requisition[]>([])
-  const [suppliers, setSuppliers] = useState<SupplierSummary[]>([])
+  const allowed = ['Procurement Officer', 'Supervisor', 'CEO', 'Auditor'].includes(currentUser.role)
+  const procurement = currentUser.role === 'Procurement Officer'
+  const [requisitions, setRequisitions] = useState<Requisition[]>([])
   const [orders, setOrders] = useState<PurchaseOrder[]>([])
+  const [suppliers, setSuppliers] = useState<SupplierSummary[]>([])
   const [catalogRequests, setCatalogRequests] = useState<MaterialCatalogRequest[]>([])
   const [catalogLoadError, setCatalogLoadError] = useState<string | null>(null)
   const [loading, setLoading] = useState(allowed)
@@ -204,12 +184,7 @@ export function LiveProcurementView({ currentUser }: LiveProcurementViewProps) {
   const [notice, setNotice] = useState<string | null>(null)
   const [refreshKey, setRefreshKey] = useState(0)
   const [projectFilter, setProjectFilter] = useState('')
-  const procurement = currentUser.role === 'Procurement Officer'
-  const requestedProcurementSection = searchParams.get('section')
-  const procurementSection = requestedProcurementSection === 'open' || requestedProcurementSection === 'history' || requestedProcurementSection === 'catalog'
-    ? requestedProcurementSection
-    : 'ready'
-  const supervisorHistory = currentUser.role === 'Supervisor' && searchParams.get('view') === 'history'
+  const section = procurement && searchParams.get('section') === 'catalog' ? 'catalog' : 'order'
 
   useEffect(() => {
     if (!allowed) return
@@ -217,14 +192,11 @@ export function LiveProcurementView({ currentUser }: LiveProcurementViewProps) {
     const controller = new AbortController()
 
     Promise.all([
-      everyPage<SourcingRound>(page => sourcingRoundsApi.list({ page, pageSize: 100 }, controller.signal)).then(items => ({ items })),
-      everyPage<PurchaseOrder>(page => purchaseOrdersApi.list({ page, pageSize: 100 }, controller.signal)).then(items => ({ items })),
+      everyPage<Requisition>(page => requisitionsApi.list({ page, pageSize: 100, status: 'Approved' }, controller.signal)),
+      everyPage<PurchaseOrder>(page => purchaseOrdersApi.list({ page, pageSize: 100 }, controller.signal)),
       procurement
-        ? everyPage<Requisition>(page => requisitionsApi.list({ page, pageSize: 100, status: 'Approved' }, controller.signal)).then(items => ({ items }))
-        : Promise.resolve(null),
-      procurement
-        ? everyPage<SupplierSummary>(page => suppliersApi.list({ page, pageSize: 100 }, controller.signal)).then(items => ({ items }))
-        : Promise.resolve(null),
+        ? everyPage<SupplierSummary>(page => suppliersApi.list({ page, pageSize: 100 }, controller.signal))
+        : Promise.resolve([] as SupplierSummary[]),
       procurement
         ? everyPage<MaterialCatalogRequest>(page => materialCatalogRequestsApi.list({ page, pageSize: 100 }, controller.signal))
           .then(items => ({ items, error: null as string | null }))
@@ -232,15 +204,14 @@ export function LiveProcurementView({ currentUser }: LiveProcurementViewProps) {
             if (requestError instanceof DOMException && requestError.name === 'AbortError') throw requestError
             return { items: [] as MaterialCatalogRequest[], error: errorMessage(requestError) }
           })
-        : Promise.resolve(null),
+        : Promise.resolve({ items: [] as MaterialCatalogRequest[], error: null as string | null }),
     ])
-      .then(([roundResult, orderResult, requisitionResult, supplierResult, catalogRequestResult]) => {
-        setRounds(roundResult.items)
-        setOrders(orderResult.items)
-        setApprovedRequisitions(requisitionResult?.items ?? [])
-        setSuppliers(supplierResult?.items ?? [])
-        setCatalogRequests(catalogRequestResult?.items ?? [])
-        setCatalogLoadError(catalogRequestResult?.error ?? null)
+      .then(([requisitionItems, orderItems, supplierItems, catalogResult]) => {
+        setRequisitions(requisitionItems)
+        setOrders(orderItems)
+        setSuppliers(supplierItems)
+        setCatalogRequests(catalogResult.items)
+        setCatalogLoadError(catalogResult.error)
         setError(null)
       })
       .catch((requestError: unknown) => {
@@ -253,105 +224,31 @@ export function LiveProcurementView({ currentUser }: LiveProcurementViewProps) {
       })
 
     return () => controller.abort()
-  }, [allowed, currentUser.role, procurement, refreshKey])
+  }, [allowed, procurement, refreshKey])
 
-  const availableRequisitions = useMemo(() => {
-    const blockedRequisitions = new Set<number>()
-    rounds
-      .filter((round) => round.status === 'Open' || round.status === 'Awarded')
-      .forEach((round) => blockedRequisitions.add(round.requisitionId))
-    orders
-      .filter((order) => liveOrderStatuses.includes(order.status))
-      .forEach((order) => blockedRequisitions.add(order.requisitionId))
-    return approvedRequisitions.filter((item) => !blockedRequisitions.has(item.id))
-  }, [approvedRequisitions, orders, rounds])
-
-  const visibleReadyRequisitions = useMemo(
-    () => availableRequisitions.filter((request) => !projectFilter || request.projectId === Number(projectFilter)),
-    [availableRequisitions, projectFilter],
-  )
-
-  const filteredRounds = useMemo(
-    () =>
-      rounds.filter(
-        (round) => {
-          if (projectFilter && round.projectId !== Number(projectFilter)) return false
-          if (procurement) {
-            return procurementSection === 'open'
-              ? round.status === 'Open'
-              : procurementSection === 'history' && round.status !== 'Open'
-          }
-          if (currentUser.role !== 'Supervisor') return true
-          const liveOrder = orders.some(order => order.requisitionId === round.requisitionId && liveOrderStatuses.includes(order.status))
-          const actionable = (round.status === 'Open' && !liveOrder) || round.status === 'Cancelled'
-          return supervisorHistory ? !actionable : actionable
-        },
-      ),
-    [currentUser.role, orders, procurement, procurementSection, projectFilter, rounds, supervisorHistory],
-  )
-
-  const projects = useMemo(
-    () => projectOptionsFrom(currentUser, rounds),
-    [currentUser, rounds],
-  )
-  const sourcingCount = procurement && procurementSection === 'ready'
-    ? visibleReadyRequisitions.length
-    : procurement && procurementSection === 'catalog'
-      ? catalogLoadError ? 'Unavailable' : catalogRequests.filter((request) => request.status === 'Pending').length
-    : procurement
-      ? filteredRounds.length
-      : rounds.length
-  const sourcingCountLabel = procurement && procurementSection === 'ready'
-    ? 'ready'
-    : procurement && procurementSection === 'catalog'
-      ? catalogLoadError ? '' : 'waiting'
-    : procurement && procurementSection === 'open'
-      ? 'open'
-      : procurement ? 'records' : 'rounds'
-
-  function replaceRound(updated: SourcingRound, message: string) {
-    setRounds((current) => current.map((round) => (round.id === updated.id ? updated : round)))
-    setNotice(message)
-  }
-
-  function addRound(created: SourcingRound) {
-    setRounds((current) => [created, ...current])
-    setNotice('Sourcing opened.')
-    if (procurement) setSearchParams({ section: 'open' }, { replace: true })
-  }
-
-  function addQuote(roundId: number, quote: SupplierQuote) {
-    setRounds((current) =>
-      current.map((round) =>
-        round.id === roundId
-          ? {
-              ...round,
-              quotes: [...round.quotes, quote].sort(
-                (left, right) => left.unitPrice - right.unitPrice,
-              ),
-            }
-          : round,
-      ),
-    )
-    setNotice('Quote saved.')
-  }
-
-  function addOrder(order: PurchaseOrder) {
-    setOrders((current) => [order, ...current])
-    setNotice('Draft order created.')
-  }
+  // The request tracker already decides when the store is short and Procurement has to buy.
+  const toOrder = useMemo(() => {
+    const ordered = new Set(orders.filter(order => liveOrderStatuses.includes(order.status)).map(order => order.requisitionId))
+    return requisitions.filter(request => !ordered.has(request.id)
+      && request.progress.state === 'InProgress'
+      && request.progress.waitingOn === 'Procurement Officer')
+  }, [orders, requisitions])
+  const visibleToOrder = toOrder.filter(request => !projectFilter || request.projectId === Number(projectFilter))
+  const projects = useMemo(() => projectOptionsFrom(currentUser, toOrder), [currentUser, toOrder])
+  const availableSuppliers = suppliers.filter(supplier => !supplier.isBlacklisted)
+  const pendingCatalogCount = catalogRequests.filter(request => request.status === 'Pending').length
 
   if (!allowed) {
     return (
       <div className="lav-view">
         <header className="lav-page-head">
           <div>
-            <h1>Supplier sourcing</h1>
+            <h1>To order</h1>
           </div>
         </header>
         <EmptyState
           title="This workspace is not part of your role"
-          detail="Supplier sourcing is not available to this role."
+          detail="Buying is not available to this role."
         />
       </div>
     )
@@ -361,9 +258,13 @@ export function LiveProcurementView({ currentUser }: LiveProcurementViewProps) {
     <div className="lav-view lav-procurement-view ceo-readable">
       <header className="lav-page-head">
         <div>
-          <h1>Supplier sourcing</h1>
+          <h1>{section === 'catalog' ? 'Material catalog' : 'To order'}</h1>
         </div>
-        <span className="lav-count-chip">{sourcingCount} {sourcingCountLabel}</span>
+        <span className="lav-count-chip">
+          {section === 'catalog'
+            ? catalogLoadError ? 'Unavailable' : `${pendingCatalogCount} waiting`
+            : `${visibleToOrder.length} to order`}
+        </span>
       </header>
 
       {error && (
@@ -390,103 +291,257 @@ export function LiveProcurementView({ currentUser }: LiveProcurementViewProps) {
         </Notice>
       )}
 
-      {currentUser.role === 'Supervisor' && <nav className="lav-po-section-nav" aria-label="Sourcing exception sections">
-        <button type="button" className={!supervisorHistory ? 'active' : ''} aria-current={!supervisorHistory ? 'page' : undefined} onClick={() => setSearchParams({}, { replace: true })}>Needs action</button>
-        <button type="button" className={supervisorHistory ? 'active' : ''} aria-current={supervisorHistory ? 'page' : undefined} onClick={() => setSearchParams({ view: 'history' }, { replace: true })}>History</button>
-      </nav>}
-
-      {procurement && <nav className="lav-po-section-nav procurement-sourcing-nav" aria-label="Supplier sourcing sections">
-        <button type="button" className={procurementSection === 'ready' ? 'active' : ''} aria-current={procurementSection === 'ready' ? 'page' : undefined} onClick={() => setSearchParams({}, { replace: true })}>Ready requests</button>
-        <button type="button" className={procurementSection === 'open' ? 'active' : ''} aria-current={procurementSection === 'open' ? 'page' : undefined} onClick={() => setSearchParams({ section: 'open' }, { replace: true })}>Open sourcing</button>
-        <button type="button" className={procurementSection === 'history' ? 'active' : ''} aria-current={procurementSection === 'history' ? 'page' : undefined} onClick={() => setSearchParams({ section: 'history' }, { replace: true })}>History</button>
-        <button type="button" className={procurementSection === 'catalog' ? 'active' : ''} aria-current={procurementSection === 'catalog' ? 'page' : undefined} onClick={() => setSearchParams({ section: 'catalog' }, { replace: true })}>Material catalog</button>
+      {procurement && <nav className="lav-po-section-nav" aria-label="Buying sections">
+        <button type="button" className={section === 'order' ? 'active' : ''} aria-current={section === 'order' ? 'page' : undefined} onClick={() => setSearchParams({}, { replace: true })}>To order</button>
+        <button type="button" className={section === 'catalog' ? 'active' : ''} aria-current={section === 'catalog' ? 'page' : undefined} onClick={() => setSearchParams({ section: 'catalog' }, { replace: true })}>Material catalog</button>
       </nav>}
 
       {loading ? (
-        <LoadingBlock label="Loading supplier sourcing…" />
+        <LoadingBlock label="Loading requests to order…" />
+      ) : section === 'catalog' ? (
+        <MaterialCatalogReview
+          requests={catalogRequests}
+          loadError={catalogLoadError}
+          onReviewed={(updated) => {
+            setCatalogRequests((current) => current.map((item) => item.id === updated.id ? updated : item))
+            setNotice(`Material catalog request ${updated.status.toLowerCase()}.`)
+          }}
+        />
       ) : (
-        <>
-          {procurement && procurementSection === 'ready' && <section className="lav-panel">
-            <header className="lav-panel-head lav-request-toolbar">
-              <div><h2>Ready requests</h2></div>
-              <div className="lav-filter-row">
-                <label>
-                  <span className="lav-visually-hidden">Filter by project</span>
-                  <select value={projectFilter} onChange={(event) => setProjectFilter(event.currentTarget.value)}>
-                    <option value="">All projects</option>
-                    {projects.map((project) => <option key={project.id} value={project.id}>{project.name}</option>)}
-                  </select>
-                </label>
-              </div>
-            </header>
-            <CreateSourcingRoundForm requisitions={visibleReadyRequisitions} onCreated={addRound}/>
-          </section>}
+        <section className="lav-panel">
+          <header className="lav-panel-head lav-request-toolbar">
+            <div>
+              <h2>Approved requests waiting for an order</h2>
+            </div>
+            <div className="lav-filter-row">
+              <label>
+                <span className="lav-visually-hidden">Filter by project</span>
+                <select value={projectFilter} onChange={(event) => setProjectFilter(event.currentTarget.value)}>
+                  <option value="">All projects</option>
+                  {projects.map((project) => <option key={project.id} value={project.id}>{project.name}</option>)}
+                </select>
+              </label>
+            </div>
+          </header>
 
-          {procurement && procurementSection === 'catalog' && (
-            <MaterialCatalogReview
-              requests={catalogRequests}
-              loadError={catalogLoadError}
-              onReviewed={(updated) => {
-                setCatalogRequests((current) => current.map((item) => item.id === updated.id ? updated : item))
-                setNotice(`Material catalog request ${updated.status.toLowerCase()}.`)
-              }}
-            />
+          {procurement && availableSuppliers.length === 0 && (
+            <Notice>Add the suppliers you buy from under Suppliers before placing an order.</Notice>
           )}
 
-          {(!procurement || procurementSection === 'open' || procurementSection === 'history') && <section className="lav-panel">
-            <header className="lav-panel-head lav-request-toolbar">
-              <div>
-                <h2>{procurement
-                  ? procurementSection === 'open' ? 'Open sourcing' : 'Sourcing history'
-                  : currentUser.role === 'Supervisor' ? supervisorHistory ? 'Sourcing history' : 'Sourcing exceptions' : 'Sourcing record'}</h2>
-              </div>
-              <div className="lav-filter-row">
-                <label>
-                  <span className="lav-visually-hidden">Filter by project</span>
-                  <select
-                    value={projectFilter}
-                    onChange={(event) => setProjectFilter(event.currentTarget.value)}
-                  >
-                    <option value="">All projects</option>
-                    {projects.map((project) => (
-                      <option key={project.id} value={project.id}>
-                        {project.name}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-              </div>
-            </header>
-
-            <div className="lav-purchase-list">
-              {filteredRounds.length === 0 ? (
-                <EmptyState
-                  title={procurement && procurementSection === 'open' ? 'No open sourcing' : procurement ? 'No sourcing history' : 'No sourcing rounds here'}
-                  detail={projectFilter ? 'Choose another project.' : procurement && procurementSection === 'open' ? 'No sourcing round is currently open.' : procurement ? 'No completed sourcing round is recorded.' : rounds.length ? 'Choose another project.' : 'An approved material request is needed before Procurement can start sourcing.'}
+          <div className="lav-purchase-list">
+            {visibleToOrder.length === 0 ? (
+              <EmptyState
+                title="Nothing to order"
+                detail={projectFilter
+                  ? 'Choose another project.'
+                  : 'Approved requests the store cannot cover, and approved store restocks, appear here.'}
+              />
+            ) : (
+              visibleToOrder.map((request) => (
+                <OrderRequestCard
+                  key={request.id}
+                  requisition={request}
+                  suppliers={availableSuppliers}
+                  canOrder={procurement}
+                  onPlaced={(order) => {
+                    setOrders((current) => [order, ...current])
+                    setNotice(`${order.purchaseOrderNumber} placed with ${order.supplierName}. Stores now see it as an expected delivery.`)
+                  }}
                 />
-              ) : (
-                filteredRounds.map((round) => (
-                  <SourcingRoundCard
-                    key={round.id}
-                    round={round}
-                    currentUser={currentUser}
-                    suppliers={suppliers}
-                    liveOrder={orders.find(
-                      (order) =>
-                        order.requisitionId === round.requisitionId &&
-                        liveOrderStatuses.includes(order.status),
-                    )}
-                    onRoundChanged={replaceRound}
-                    onQuoteAdded={addQuote}
-                    onOrderCreated={addOrder}
-                  />
-                ))
-              )}
-            </div>
-          </section>}
-        </>
+              ))
+            )}
+          </div>
+        </section>
       )}
     </div>
+  )
+}
+
+function OrderRequestCard({
+  requisition,
+  suppliers,
+  canOrder,
+  onPlaced,
+}: {
+  requisition: Requisition
+  suppliers: SupplierSummary[]
+  canOrder: boolean
+  onPlaced: (order: PurchaseOrder) => void
+}) {
+  const [open, setOpen] = useState(false)
+
+  return (
+    <article className="lav-purchase-card">
+      <header>
+        <div className="lav-request-id">
+          <span>{requisition.requestType === 'StockReplenishment' ? 'STORE RESTOCK' : 'SITE REQUEST'}</span>
+          <strong>{formatNumber(requisition.quantity)} {requisition.materialUnit} {requisition.materialName}</strong>
+          <small>{requisition.projectName}</small>
+        </div>
+        <span className="lav-status pending">Waiting for Procurement Officer</span>
+      </header>
+
+      <div className="lav-purchase-facts order">
+        <div>
+          <span>Needed by</span>
+          <strong>{formatDate(requisition.neededByDate)}</strong>
+        </div>
+        <div>
+          <span>Budget area</span>
+          <strong>{requisition.costCode} · {requisition.costCodeName}</strong>
+        </div>
+        <div>
+          <span>Purpose</span>
+          <strong>{requisition.purpose}</strong>
+        </div>
+        <div>
+          <span>Approved</span>
+          <strong>{formatDateTime(requisition.approvedAt)}</strong>
+        </div>
+      </div>
+
+      {open ? (
+        <PlaceOrderForm
+          requisition={requisition}
+          suppliers={suppliers}
+          onCancel={() => setOpen(false)}
+          onPlaced={onPlaced}
+        />
+      ) : canOrder && (
+        <div className="lav-card-action-row">
+          <span>Agree the price and delivery with the supplier, then record the order here.</span>
+          <button className="lav-button primary" type="button" disabled={suppliers.length === 0} onClick={() => setOpen(true)}>
+            Order from a supplier
+          </button>
+        </div>
+      )}
+    </article>
+  )
+}
+
+function PlaceOrderForm({
+  requisition,
+  suppliers,
+  onCancel,
+  onPlaced,
+}: {
+  requisition: Requisition
+  suppliers: SupplierSummary[]
+  onCancel: () => void
+  onPlaced: (order: PurchaseOrder) => void
+}) {
+  const [supplierId, setSupplierId] = useState('')
+  const [unitPrice, setUnitPrice] = useState('')
+  const [expectedDeliveryDate, setExpectedDeliveryDate] = useState(localDate(7))
+  const [deliveryLocation, setDeliveryLocation] = useState('')
+  const [supplierReference, setSupplierReference] = useState('')
+  const [notes, setNotes] = useState('')
+  const [reviewing, setReviewing] = useState(false)
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const supplier = suppliers.find((item) => item.id === Number(supplierId)) ?? null
+  const price = Number(unitPrice)
+  const total = unitPrice !== '' && Number.isFinite(price) && price > 0 ? price * requisition.quantity : null
+  const item = `${formatNumber(requisition.quantity)} ${requisition.materialUnit} ${requisition.materialName}`
+
+  async function place() {
+    if (busy) return
+    setBusy(true)
+    setError(null)
+    try {
+      const order = await purchaseOrdersApi.place({
+        requisitionId: requisition.id,
+        supplierId: Number(supplierId),
+        unitPrice: price,
+        expectedDeliveryDate,
+        deliveryLocation: deliveryLocation.trim() || null,
+        supplierReference: supplierReference.trim() || null,
+        notes: notes.trim() || null,
+      })
+      onPlaced(order)
+    } catch (requestError) {
+      setError(errorMessage(requestError))
+      setReviewing(false)
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  return (
+    <form
+      className="lav-workflow-form lav-order-create-form"
+      onSubmit={(event) => {
+        event.preventDefault()
+        setError(null)
+        setReviewing(true)
+      }}
+    >
+      <header>
+        <div>
+          <span className="lav-kicker">Purchase order</span>
+          <h3>Order {item}</h3>
+        </div>
+        <button className="lav-text-button" type="button" onClick={onCancel}>Cancel</button>
+      </header>
+      {error && <Notice tone="error">{error}</Notice>}
+
+      {reviewing && supplier && total !== null ? (
+        <div className="lav-order-confirm" role="group" aria-label="Check the order">
+          <strong>Place this order with {supplier.name}?</strong>
+          <p>
+            {item} at {formatMoney(price)} each, {formatMoney(total)} in total, delivered by{' '}
+            {formatDate(expectedDeliveryDate)} to {deliveryLocation.trim() || requisition.projectName}.
+          </p>
+          <p>It is recorded as sent to the supplier and cannot be changed afterwards, so check the supplier and price.</p>
+          <div className="lav-form-actions">
+            <button className="lav-button secondary" type="button" disabled={busy} onClick={() => setReviewing(false)}>Back</button>
+            <button className="lav-button primary" type="button" disabled={busy} onClick={() => void place()}>
+              {busy ? 'Placing…' : 'Place order'}
+            </button>
+          </div>
+        </div>
+      ) : (
+        <>
+          <div className="lav-form-grid lav-purchase-form-grid">
+            <label className="lav-field compact span-two">
+              <span>Supplier</span>
+              <select required value={supplierId} onChange={(event) => setSupplierId(event.currentTarget.value)}>
+                <option value="">Choose supplier</option>
+                {suppliers.map((option) => (
+                  <option key={option.id} value={option.id}>
+                    {option.name}{option.category ? ` · ${option.category}` : ''}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className="lav-field compact">
+              <span>Unit price (KES)</span>
+              <input type="number" min="0.01" step="0.01" inputMode="decimal" required value={unitPrice} onChange={(event) => setUnitPrice(event.currentTarget.value)} />
+            </label>
+            <label className="lav-field compact">
+              <span>Expected delivery</span>
+              <input type="date" min={localDate()} required value={expectedDeliveryDate} onChange={(event) => setExpectedDeliveryDate(event.currentTarget.value)} />
+            </label>
+            <label className="lav-field compact span-two">
+              <span>Deliver to <small>Defaults to the project location</small></span>
+              <input maxLength={300} value={deliveryLocation} onChange={(event) => setDeliveryLocation(event.currentTarget.value)} />
+            </label>
+            <label className="lav-field compact">
+              <span>Supplier&apos;s quote or invoice no. <small>Optional</small></span>
+              <input maxLength={100} value={supplierReference} onChange={(event) => setSupplierReference(event.currentTarget.value)} />
+            </label>
+            <label className="lav-field compact span-two">
+              <span>Notes <small>Optional</small></span>
+              <input maxLength={1000} value={notes} onChange={(event) => setNotes(event.currentTarget.value)} />
+            </label>
+          </div>
+          <div className="lav-form-actions">
+            <span>{total !== null ? `Order total: ${formatMoney(total)}` : 'The quantity is the approved quantity.'}</span>
+            <button className="lav-button primary" type="submit">Review order</button>
+          </div>
+        </>
+      )}
+    </form>
   )
 }
 
@@ -616,595 +671,6 @@ function MaterialCatalogRequestCard({
   )
 }
 
-function CreateSourcingRoundForm({
-  requisitions,
-  onCreated,
-}: {
-  requisitions: Requisition[]
-  onCreated: (round: SourcingRound) => void
-}) {
-  const [open, setOpen] = useState(false)
-  const [requisitionId, setRequisitionId] = useState('')
-  const [quoteDueAt, setQuoteDueAt] = useState('')
-  const [notes, setNotes] = useState('')
-  const [busy, setBusy] = useState(false)
-  const [error, setError] = useState<string | null>(null)
-
-  async function submit(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault()
-    if (busy) return
-    const dueAt = toIsoDateTime(quoteDueAt)
-    if (quoteDueAt && !dueAt) {
-      setError('Choose a valid future quote deadline.')
-      return
-    }
-
-    setBusy(true)
-    setError(null)
-    try {
-      const created = await sourcingRoundsApi.create({
-        requisitionId: Number(requisitionId),
-        quoteDueAt: dueAt,
-        notes: notes.trim() || null,
-      })
-      onCreated(created)
-      setRequisitionId('')
-      setQuoteDueAt('')
-      setNotes('')
-      setOpen(false)
-    } catch (requestError) {
-      setError(errorMessage(requestError))
-    } finally {
-      setBusy(false)
-    }
-  }
-
-  return (
-    <section className={`lav-create-request ${open ? 'open' : ''}`}>
-      <button className="lav-create-toggle" type="button" onClick={() => setOpen(!open)}>
-        <span aria-hidden="true">+</span>
-        <span>
-          <strong>Start supplier sourcing</strong>
-          <small>Choose one request already approved by a Supervisor.</small>
-        </span>
-        <b>{open ? 'Close form' : `${requisitions.length} ready`}</b>
-      </button>
-      {open && (
-        <form onSubmit={submit}>
-          {error && <Notice tone="error">{error}</Notice>}
-          {requisitions.length === 0 ? (
-            <Notice>No approved request is ready for a new sourcing round.</Notice>
-          ) : (
-            <>
-              <div className="lav-form-grid lav-purchase-form-grid">
-                <label className="lav-field compact span-two">
-                  <span>Approved material request</span>
-                  <select
-                    value={requisitionId}
-                    onChange={(event) => setRequisitionId(event.currentTarget.value)}
-                    required
-                  >
-                    <option value="">Choose request</option>
-                    {requisitions.map((request) => (
-                      <option key={request.id} value={request.id}>
-                        {request.projectName} · {formatNumber(request.quantity)} {request.materialUnit} {request.materialName}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-                <label className="lav-field compact">
-                  <span>Quotes due <small>Optional</small></span>
-                  <input
-                    type="datetime-local"
-                    value={quoteDueAt}
-                    onChange={(event) => setQuoteDueAt(event.currentTarget.value)}
-                  />
-                </label>
-                <label className="lav-field compact span-three">
-                  <span>Instructions <small>Optional</small></span>
-                  <textarea
-                    value={notes}
-                    onChange={(event) => setNotes(event.currentTarget.value)}
-                    maxLength={1000}
-                    rows={2}
-                    placeholder="Delivery or quotation instructions"
-                  />
-                </label>
-              </div>
-              <div className="lav-form-actions">
-                <button className="lav-button primary" type="submit" disabled={busy}>
-                  {busy ? 'Opening…' : 'Open sourcing round'}
-                </button>
-              </div>
-            </>
-          )}
-        </form>
-      )}
-    </section>
-  )
-}
-
-function SourcingRoundCard({
-  round,
-  currentUser,
-  suppliers,
-  liveOrder,
-  onRoundChanged,
-  onQuoteAdded,
-  onOrderCreated,
-}: {
-  round: SourcingRound
-  currentUser: CurrentUser
-  suppliers: SupplierSummary[]
-  liveOrder?: PurchaseOrder
-  onRoundChanged: (round: SourcingRound, message: string) => void
-  onQuoteAdded: (roundId: number, quote: SupplierQuote) => void
-  onOrderCreated: (order: PurchaseOrder) => void
-}) {
-  const [quoteFormOpen, setQuoteFormOpen] = useState(false)
-  const [poQuoteId, setPoQuoteId] = useState<number | null>(null)
-  const [roundAction, setRoundAction] = useState<RoundAction>(null)
-  const procurement = currentUser.role === 'Procurement Officer'
-  const independentReviewer = currentUser.role === 'Supervisor' || currentUser.role === 'CEO'
-  const canClose = procurement && round.status === 'Open' && !liveOrder
-  const canCancel = independentReviewer && round.status === 'Open' && !liveOrder
-  const canReopen =
-    (procurement && round.status === 'Closed') ||
-    (independentReviewer && round.status === 'Cancelled')
-
-  return (
-    <article className={`lav-purchase-card status-${round.status.toLowerCase()}`}>
-      <header>
-        <div className="lav-request-id">
-          <span>{round.status === 'Cancelled' ? 'CANCELLED SOURCING' : round.status === 'Awarded' ? 'SUPPLIER SELECTED' : 'SUPPLIER SOURCING'}</span>
-          <strong>{round.materialName}</strong>
-          <small>{round.projectName}</small>
-        </div>
-        <span className={`lav-status ${statusTone(round.status)}`}>
-          {roundStatusLabel(round.status)}
-        </span>
-      </header>
-
-      <div className="lav-purchase-facts">
-        <div>
-          <span>Quantity required</span>
-          <strong>
-            {formatNumber(round.requestedQuantity)} {round.materialUnit}
-          </strong>
-        </div>
-        <div>
-          <span>Quotes received</span>
-          <strong>{round.quotes.length}</strong>
-        </div>
-        <div>
-          <span>Quote deadline</span>
-          <strong>{formatDateTime(round.quoteDueAt)}</strong>
-        </div>
-        <div>
-          <span>Opened by</span>
-          <strong>{round.createdByUserName}</strong>
-        </div>
-      </div>
-
-      {round.notes && <p className="lav-action-message">{round.notes}</p>}
-      <QuoteComparison
-        quotes={round.quotes}
-        unit={round.materialUnit}
-        canPrepareOrder={procurement && round.status === 'Open' && !liveOrder}
-        onPrepareOrder={setPoQuoteId}
-      />
-
-      {poQuoteId !== null && procurement && round.status === 'Open' && !liveOrder && (
-        <CreatePurchaseOrderForm
-          round={round}
-          quote={round.quotes.find((quote) => quote.id === poQuoteId)!}
-          onCancel={() => setPoQuoteId(null)}
-          onCreated={(order) => {
-            onOrderCreated(order)
-            setPoQuoteId(null)
-          }}
-        />
-      )}
-
-      {quoteFormOpen && procurement && round.status === 'Open' && !liveOrder && (
-        <RecordQuoteForm
-          round={round}
-          suppliers={suppliers}
-          onCancel={() => setQuoteFormOpen(false)}
-          onCreated={(quote) => {
-            onQuoteAdded(round.id, quote)
-            setQuoteFormOpen(false)
-          }}
-        />
-      )}
-
-      {roundAction && (
-        <RoundActionForm
-          round={round}
-          action={roundAction}
-          onCancel={() => setRoundAction(null)}
-          onChanged={(updated, message) => {
-            onRoundChanged(updated, message)
-            setQuoteFormOpen(false)
-            setPoQuoteId(null)
-            setRoundAction(null)
-          }}
-        />
-      )}
-
-      {(procurement || independentReviewer) && (
-        <div className="lav-card-action-row lav-multi-actions">
-          {procurement && round.status === 'Open' && !liveOrder && (
-            <button
-              className="lav-button secondary"
-              type="button"
-              onClick={() => setQuoteFormOpen((value) => !value)}
-            >
-              {quoteFormOpen ? 'Close quote form' : 'Add supplier quote'}
-            </button>
-          )}
-          {canClose && (
-            <button className="lav-button secondary" type="button" onClick={() => setRoundAction('close')}>
-              Close without award
-            </button>
-          )}
-          {canCancel && (
-            <button className="lav-button danger-outline" type="button" onClick={() => setRoundAction('cancel')}>
-              Cancel round
-            </button>
-          )}
-          {canReopen && (
-            <button className="lav-button primary" type="button" onClick={() => setRoundAction('reopen')}>
-              Reopen round
-            </button>
-          )}
-        </div>
-      )}
-
-      {(currentUser.role === 'CEO' || currentUser.role === 'Auditor') && (
-        <WorkflowHistory
-          title="Sourcing history"
-          events={round.events.map((event) => ({
-            id: event.id,
-            eventType: event.eventType,
-            actor: `${event.actorUserName} · ${event.actorRole}`,
-            notes: event.notes,
-            occurredAt: event.occurredAt,
-          }))}
-        />
-      )}
-    </article>
-  )
-}
-
-function QuoteComparison({
-  quotes,
-  unit,
-  canPrepareOrder,
-  onPrepareOrder,
-}: {
-  quotes: SupplierQuote[]
-  unit: string
-  canPrepareOrder: boolean
-  onPrepareOrder: (quoteId: number) => void
-}) {
-  if (!quotes.length) {
-    return <p className="lav-muted-copy lav-purchase-empty-line">No supplier quote recorded yet.</p>
-  }
-
-  return (
-    <div className="lav-quote-table-wrap">
-      <table className="lav-quote-table">
-        <thead>
-          <tr>
-            <th>Supplier</th>
-            <th>Quantity</th>
-            <th>Unit price</th>
-            <th>Price check</th>
-            <th>Total offer</th>
-            {canPrepareOrder && <th><span className="lav-visually-hidden">Action</span></th>}
-          </tr>
-        </thead>
-        <tbody>
-          {quotes.map((quote, index) => (
-            <tr key={quote.id}>
-              <td>
-                <strong>{quote.supplierName}</strong>
-              </td>
-              <td>
-                {formatNumber(quote.quantityOffered)} {unit}
-              </td>
-              <td>{formatMoney(quote.unitPrice)}</td>
-              <td>
-                {quote.priceVariancePercentage === null ? (
-                  <span className="lav-price-check neutral">No reference price</span>
-                ) : (
-                  <span className={`lav-price-check ${quote.priceAboveStandard ? 'high' : 'ok'}`}>
-                    {quote.priceVariancePercentage > 0 ? '+' : ''}
-                    {formatNumber(quote.priceVariancePercentage)}% vs reference
-                  </span>
-                )}
-              </td>
-              <td>
-                <strong>{formatMoney(quote.totalPrice)}</strong>
-                {index === 0 && <small>Lowest unit price</small>}
-              </td>
-              {canPrepareOrder && (
-                <td>
-                  <button
-                    className="lav-text-button"
-                    type="button"
-                    onClick={() => onPrepareOrder(quote.id)}
-                  >
-                    Prepare PO
-                  </button>
-                </td>
-              )}
-            </tr>
-          ))}
-        </tbody>
-      </table>
-    </div>
-  )
-}
-
-function RecordQuoteForm({
-  round,
-  suppliers,
-  onCancel,
-  onCreated,
-}: {
-  round: SourcingRound
-  suppliers: SupplierSummary[]
-  onCancel: () => void
-  onCreated: (quote: SupplierQuote) => void
-}) {
-  const [supplierId, setSupplierId] = useState('')
-  const [reference, setReference] = useState('')
-  const [quantity, setQuantity] = useState(String(round.requestedQuantity))
-  const [unitPrice, setUnitPrice] = useState('')
-  const [validUntil, setValidUntil] = useState('')
-  const [notes, setNotes] = useState('')
-  const [busy, setBusy] = useState(false)
-  const [error, setError] = useState<string | null>(null)
-  const eligibleSuppliers = suppliers.filter((supplier) => !supplier.isBlacklisted)
-
-  async function submit(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault()
-    if (busy) return
-    setBusy(true)
-    setError(null)
-    try {
-      const quote = await sourcingRoundsApi.recordQuote(round.id, {
-        supplierId: Number(supplierId),
-        quoteReference: reference.trim(),
-        quantityOffered: Number(quantity),
-        unitPrice: Number(unitPrice),
-        validUntil: validUntil || null,
-        notes: notes.trim() || null,
-      })
-      onCreated(quote)
-    } catch (requestError) {
-      setError(errorMessage(requestError))
-    } finally {
-      setBusy(false)
-    }
-  }
-
-  return (
-    <form className="lav-workflow-form" onSubmit={submit}>
-      <header>
-        <div>
-          <span className="lav-kicker">Procurement action</span>
-          <h3>Record supplier quote</h3>
-        </div>
-        <button className="lav-text-button" type="button" onClick={onCancel}>
-          Cancel
-        </button>
-      </header>
-      {error && <Notice tone="error">{error}</Notice>}
-      {eligibleSuppliers.length === 0 ? (
-        <Notice>No active supplier is available. Register or reinstate a supplier first.</Notice>
-      ) : (
-        <>
-          <div className="lav-form-grid lav-purchase-form-grid">
-            <label className="lav-field compact">
-              <span>Supplier</span>
-              <select value={supplierId} onChange={(event) => setSupplierId(event.currentTarget.value)} required>
-                <option value="">Choose supplier</option>
-                {eligibleSuppliers.map((supplier) => (
-                  <option key={supplier.id} value={supplier.id}>
-                    {supplier.name}{supplier.category ? ` · ${supplier.category}` : ''}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <label className="lav-field compact">
-              <span>Quote reference</span>
-              <input value={reference} onChange={(event) => setReference(event.currentTarget.value)} maxLength={100} required />
-            </label>
-            <label className="lav-field compact">
-              <span>Quantity offered ({round.materialUnit})</span>
-              <input type="number" min={round.requestedQuantity} step="0.001" value={quantity} onChange={(event) => setQuantity(event.currentTarget.value)} required />
-            </label>
-            <label className="lav-field compact">
-              <span>Price per {round.materialUnit} (KES)</span>
-              <input type="number" min="0.01" step="0.01" value={unitPrice} onChange={(event) => setUnitPrice(event.currentTarget.value)} required />
-            </label>
-            <label className="lav-field compact">
-              <span>Valid until <small>Optional</small></span>
-              <input type="date" min={localDate()} value={validUntil} onChange={(event) => setValidUntil(event.currentTarget.value)} />
-            </label>
-            <label className="lav-field compact span-two">
-              <span>Notes <small>Optional</small></span>
-              <input value={notes} onChange={(event) => setNotes(event.currentTarget.value)} maxLength={1000} />
-            </label>
-          </div>
-          <div className="lav-form-actions">
-            <span>The server records the material reference price with this quote.</span>
-            <button className="lav-button primary" type="submit" disabled={busy}>
-              {busy ? 'Recording…' : 'Record quote'}
-            </button>
-          </div>
-        </>
-      )}
-    </form>
-  )
-}
-
-function CreatePurchaseOrderForm({
-  round,
-  quote,
-  onCancel,
-  onCreated,
-}: {
-  round: SourcingRound
-  quote: SupplierQuote
-  onCancel: () => void
-  onCreated: (order: PurchaseOrder) => void
-}) {
-  const [expectedDeliveryDate, setExpectedDeliveryDate] = useState(localDate(7))
-  const [deliveryLocation, setDeliveryLocation] = useState('')
-  const [notes, setNotes] = useState('')
-  const [busy, setBusy] = useState(false)
-  const [error, setError] = useState<string | null>(null)
-
-  async function submit(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault()
-    if (busy) return
-    setBusy(true)
-    setError(null)
-    try {
-      const order = await purchaseOrdersApi.create({
-        requisitionId: round.requisitionId,
-        supplierQuoteId: quote.id,
-        expectedDeliveryDate,
-        deliveryLocation: deliveryLocation.trim() || null,
-        notes: notes.trim() || null,
-      })
-      onCreated(order)
-    } catch (requestError) {
-      setError(errorMessage(requestError))
-    } finally {
-      setBusy(false)
-    }
-  }
-
-  return (
-    <form className="lav-workflow-form lav-order-create-form" onSubmit={submit}>
-      <header>
-        <div>
-          <span className="lav-kicker">Draft order</span>
-          <h3>Prepare PO for {quote.supplierName}</h3>
-        </div>
-        <button className="lav-text-button" type="button" onClick={onCancel}>Cancel</button>
-      </header>
-      {error && <Notice tone="error">{error}</Notice>}
-      <Notice>
-        Proposed value: {formatMoney(round.requestedQuantity * quote.unitPrice)}
-      </Notice>
-      <div className="lav-form-grid lav-purchase-form-grid">
-        <label className="lav-field compact">
-          <span>Expected delivery</span>
-          <input type="date" min={localDate()} value={expectedDeliveryDate} onChange={(event) => setExpectedDeliveryDate(event.currentTarget.value)} required />
-        </label>
-        <label className="lav-field compact span-two">
-          <span>Delivery location <small>Defaults to project location</small></span>
-          <input value={deliveryLocation} onChange={(event) => setDeliveryLocation(event.currentTarget.value)} maxLength={300} />
-        </label>
-        <label className="lav-field compact span-three">
-          <span>Order notes <small>Optional</small></span>
-          <textarea value={notes} onChange={(event) => setNotes(event.currentTarget.value)} maxLength={1000} rows={2} />
-        </label>
-      </div>
-      <div className="lav-form-actions">
-        <span>Material, quantity and unit price are copied from the approved records.</span>
-        <button className="lav-button primary" type="submit" disabled={busy}>
-          {busy ? 'Preparing…' : 'Create draft PO'}
-        </button>
-      </div>
-    </form>
-  )
-}
-
-function RoundActionForm({
-  round,
-  action,
-  onCancel,
-  onChanged,
-}: {
-  round: SourcingRound
-  action: Exclude<RoundAction, null>
-  onCancel: () => void
-  onChanged: (round: SourcingRound, message: string) => void
-}) {
-  const [reason, setReason] = useState('')
-  const [quoteDueAt, setQuoteDueAt] = useState('')
-  const [busy, setBusy] = useState(false)
-  const [error, setError] = useState<string | null>(null)
-
-  async function submit(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault()
-    if (busy) return
-    setBusy(true)
-    setError(null)
-    try {
-      let updated: SourcingRound
-      if (action === 'close') {
-        updated = await sourcingRoundsApi.close(round.id, { reason: reason.trim() })
-      } else if (action === 'cancel') {
-        updated = await sourcingRoundsApi.cancel(round.id, { reason: reason.trim() })
-      } else {
-        updated = await sourcingRoundsApi.reopen(round.id, {
-          reason: reason.trim(),
-          quoteDueAt: toIsoDateTime(quoteDueAt),
-        })
-      }
-      const message =
-        action === 'reopen'
-          ? 'Sourcing reopened.'
-          : action === 'close'
-            ? 'Sourcing closed.'
-            : 'Sourcing cancelled.'
-      onChanged(updated, message)
-    } catch (requestError) {
-      setError(errorMessage(requestError))
-    } finally {
-      setBusy(false)
-    }
-  }
-
-  return (
-    <form className="lav-workflow-form" onSubmit={submit}>
-      <header>
-        <div>
-          <span className="lav-kicker">Recorded decision</span>
-          <h3>{action === 'reopen' ? 'Reopen sourcing' : action === 'close' ? 'Close without award' : 'Cancel sourcing'}</h3>
-        </div>
-        <button className="lav-text-button" type="button" onClick={onCancel}>Cancel</button>
-      </header>
-      {error && <Notice tone="error">{error}</Notice>}
-      <div className="lav-form-grid lav-purchase-form-grid">
-        <label className="lav-field compact span-two">
-          <span>Reason</span>
-          <input value={reason} onChange={(event) => setReason(event.currentTarget.value)} minLength={3} maxLength={1000} required />
-        </label>
-        {action === 'reopen' && (
-          <label className="lav-field compact">
-            <span>New quote deadline <small>Optional</small></span>
-            <input type="datetime-local" value={quoteDueAt} onChange={(event) => setQuoteDueAt(event.currentTarget.value)} />
-          </label>
-        )}
-      </div>
-      <div className="lav-form-actions">
-        <button className={`lav-button ${action === 'cancel' ? 'danger' : 'primary'}`} type="submit" disabled={busy}>
-          {busy ? 'Saving…' : 'Confirm action'}
-        </button>
-      </div>
-    </form>
-  )
-}
-
 export function LivePurchaseOrdersView({ currentUser }: LivePurchaseOrdersViewProps) {
   const [searchParams, setSearchParams] = useSearchParams()
   const allowed = [
@@ -1222,10 +688,15 @@ export function LivePurchaseOrdersView({ currentUser }: LivePurchaseOrdersViewPr
   const [refreshKey, setRefreshKey] = useState(0)
   const [projectFilter, setProjectFilter] = useState('')
   const procurement = currentUser.role === 'Procurement Officer'
+  // Orders are placed and sent in one step now; Draft, Submitted and Approved only exist on
+  // orders started on the old quote screens, so their tab appears only while any remain.
+  const unfinishedOrders = orders.filter(order => order.status === 'Draft' || order.status === 'Submitted' || order.status === 'Approved')
   const requestedProcurementSection = searchParams.get('section')
-  const procurementSection = requestedProcurementSection === 'waiting' || requestedProcurementSection === 'sent' || requestedProcurementSection === 'history'
-    ? requestedProcurementSection
-    : 'action'
+  const procurementSection = requestedProcurementSection === 'history'
+    ? 'history'
+    : requestedProcurementSection === 'unfinished' && unfinishedOrders.length > 0
+      ? 'unfinished'
+      : 'sent'
   const simplifiedOrderRole = currentUser.role === 'Supervisor' || currentUser.role === 'Storekeeper' || currentUser.role === 'Finance Officer'
   const showHistory = searchParams.get('view') === 'history'
 
@@ -1257,9 +728,8 @@ export function LivePurchaseOrdersView({ currentUser }: LivePurchaseOrdersViewPr
       (order) => {
         if (projectFilter && order.projectId !== Number(projectFilter)) return false
         if (procurement) {
-          if (procurementSection === 'action') return (order.status === 'Draft' && order.createdByUserId === currentUser.id) || order.status === 'Approved'
-          if (procurementSection === 'waiting') return order.status === 'Submitted'
           if (procurementSection === 'sent') return order.status === 'Issued'
+          if (procurementSection === 'unfinished') return unfinishedOrders.includes(order)
           return order.status === 'Rejected' || order.status === 'Cancelled'
         }
         if (!simplifiedOrderRole) return true
@@ -1271,16 +741,14 @@ export function LivePurchaseOrdersView({ currentUser }: LivePurchaseOrdersViewPr
         return showHistory ? !current : current
       },
     )
-  }, [currentUser.id, currentUser.role, orders, procurement, procurementSection, projectFilter, showHistory, simplifiedOrderRole])
+  }, [currentUser.role, orders, procurement, procurementSection, projectFilter, showHistory, simplifiedOrderRole, unfinishedOrders])
 
   const sectionTitle = procurement
-    ? procurementSection === 'action'
-      ? 'Orders needing action'
-      : procurementSection === 'waiting'
-        ? 'Waiting approval'
-        : procurementSection === 'sent'
-          ? 'Sent to supplier'
-          : 'Order history'
+    ? procurementSection === 'sent'
+      ? 'Sent to supplier'
+      : procurementSection === 'unfinished'
+        ? 'Unfinished orders'
+        : 'Order history'
     : simplifiedOrderRole
       ? showHistory
         ? 'Order history'
@@ -1345,10 +813,9 @@ export function LivePurchaseOrdersView({ currentUser }: LivePurchaseOrdersViewPr
         <button type="button" className={showHistory ? 'active' : ''} aria-current={showHistory ? 'page' : undefined} onClick={() => setSearchParams({ view: 'history' }, { replace: true })}>History</button>
       </nav>}
 
-      {procurement && <nav className="lav-po-section-nav procurement-order-nav" aria-label="Procurement purchase order sections">
-        <button type="button" className={procurementSection === 'action' ? 'active' : ''} aria-current={procurementSection === 'action' ? 'page' : undefined} onClick={() => setSearchParams({}, { replace: true })}>Needs action</button>
-        <button type="button" className={procurementSection === 'waiting' ? 'active' : ''} aria-current={procurementSection === 'waiting' ? 'page' : undefined} onClick={() => setSearchParams({ section: 'waiting' }, { replace: true })}>Waiting approval</button>
-        <button type="button" className={procurementSection === 'sent' ? 'active' : ''} aria-current={procurementSection === 'sent' ? 'page' : undefined} onClick={() => setSearchParams({ section: 'sent' }, { replace: true })}>Sent to supplier</button>
+      {procurement && <nav className={`lav-po-section-nav ${unfinishedOrders.length > 0 ? 'three-tabs' : ''}`} aria-label="Procurement purchase order sections">
+        <button type="button" className={procurementSection === 'sent' ? 'active' : ''} aria-current={procurementSection === 'sent' ? 'page' : undefined} onClick={() => setSearchParams({}, { replace: true })}>Sent to supplier</button>
+        {unfinishedOrders.length > 0 && <button type="button" className={procurementSection === 'unfinished' ? 'active' : ''} aria-current={procurementSection === 'unfinished' ? 'page' : undefined} onClick={() => setSearchParams({ section: 'unfinished' }, { replace: true })}>Unfinished ({unfinishedOrders.length})</button>}
         <button type="button" className={procurementSection === 'history' ? 'active' : ''} aria-current={procurementSection === 'history' ? 'page' : undefined} onClick={() => setSearchParams({ section: 'history' }, { replace: true })}>History</button>
       </nav>}
 
@@ -1374,7 +841,7 @@ export function LivePurchaseOrdersView({ currentUser }: LivePurchaseOrdersViewPr
             {filteredOrders.length === 0 ? (
               <EmptyState
                 title="No purchase orders here"
-                detail={orders.length ? 'Choose another project.' : 'A supplier quote must be selected before an order can be prepared.'}
+                detail={orders.length ? 'Choose another project.' : 'Orders appear here once they are placed from To order.'}
               />
             ) : (
               filteredOrders.map((order) => (
@@ -1492,8 +959,6 @@ function PurchaseOrderCard({
 function OrderMilestones({ order }: { order: PurchaseOrder }) {
   const milestones = [
     { label: 'Prepared', at: order.createdAt, by: order.createdByUserName, reached: true },
-    { label: 'Submitted', at: order.submittedAt, reached: ['Submitted', 'Approved', 'Issued', 'Rejected'].includes(order.status) },
-    { label: 'Approved', at: order.approvedAt, by: order.approvedByUserName, reached: order.status === 'Approved' || order.status === 'Issued' },
     { label: 'Sent to supplier', at: order.issuedAt, by: order.issuedByUserName, reached: order.status === 'Issued' },
   ]
   return (

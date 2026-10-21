@@ -2,6 +2,7 @@ import { INT_MAX, Pagination } from '@/ConstructionMS.Application/Common/Paginat
 import type { DtoSchema } from '@/ConstructionMS.Application/Common/Validation'
 import { CorrectPurchaseOrderRequestDto } from '@/ConstructionMS.Application/DTOs/PurchaseOrders/CorrectPurchaseOrderRequestDto'
 import { CreatePurchaseOrderRequestDto } from '@/ConstructionMS.Application/DTOs/PurchaseOrders/CreatePurchaseOrderRequestDto'
+import { PlacePurchaseOrderRequestDto } from '@/ConstructionMS.Application/DTOs/PurchaseOrders/PlacePurchaseOrderRequestDto'
 import { PurchaseOrderActionRequestDto } from '@/ConstructionMS.Application/DTOs/PurchaseOrders/PurchaseOrderActionRequestDto'
 import { WorkflowReasonRequestDto } from '@/ConstructionMS.Application/DTOs/PurchaseOrders/WorkflowReasonRequestDto'
 import type { IPurchaseOrderService } from '@/ConstructionMS.Application/Services/PurchaseOrders/IPurchaseOrderService'
@@ -30,6 +31,12 @@ export class PurchaseOrdersControllerImpl extends ControllerBase {
     }
 
     return this.ok(ApiResponse.ok(result))
+  }
+
+  async place(): Promise<ActionResult> {
+    const dto = await this.fromBody(PlacePurchaseOrderRequestDto)
+    const result = await this.purchaseOrderService.placeOrderAsync(dto, this.currentUserId(), this.currentRole())
+    return this.created(`/api/v1/purchase-orders/${result.id}`, ApiResponse.ok(result))
   }
 
   async create(): Promise<ActionResult> {
@@ -114,6 +121,7 @@ export const PurchaseOrdersController: ControllerMetadata<PurchaseOrdersControll
     { method: 'GET', template: '', handler: c => c.getAll() },
     { method: 'GET', template: '{id:int}', handler: c => c.getById() },
     { method: 'POST', template: '', roles: ['Procurement Officer'], handler: c => c.create() },
+    { method: 'POST', template: 'place', roles: ['Procurement Officer'], handler: c => c.place() },
     { method: 'POST', template: '{id:int}/submit', roles: ['Procurement Officer'], handler: c => c.submit() },
     { method: 'POST', template: '{id:int}/approve', roles: ['Supervisor', 'CEO'], handler: c => c.approve() },
     { method: 'POST', template: '{id:int}/issue', roles: ['Procurement Officer'], handler: c => c.issue() },
