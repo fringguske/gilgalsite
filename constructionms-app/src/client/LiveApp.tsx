@@ -218,7 +218,7 @@ const roleContextSections: Partial<Record<ConstructionRole, readonly ContextSect
     paths: ['/suppliers', '/finance', '/purchase-orders', '/inventory'],
     label: 'Supplier payments',
     links: [
-      { to: '/suppliers', label: 'Supplier approvals' },
+      { to: '/suppliers', label: 'Suppliers' },
       { to: '/purchase-orders', label: 'Purchase orders' },
       { to: '/inventory', label: 'Delivery records' },
       { to: '/finance', label: 'Supplier invoices' },

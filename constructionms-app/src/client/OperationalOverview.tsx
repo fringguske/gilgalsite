@@ -50,13 +50,12 @@ const workspaceConfig: Record<SimplifiedRole, WorkspaceConfig> = {
   },
   'Finance Officer': {
     links: [
-      { label: 'Supplier approvals', to: '/suppliers' },
+      { label: 'Suppliers', to: '/suppliers' },
       { label: 'Invoices and payments', to: '/finance' },
       { label: 'Petty cash', to: '/petty-cash' },
       { label: 'Finance controls', to: '/projects' },
     ],
     metrics: [
-      { label: 'Suppliers to review', value: dashboard => dashboard.pendingSupplierOnboardingCount, attention: value => value > 0 },
       { label: 'Invoices pending', value: dashboard => dashboard.pendingInvoiceReviewCount, attention: value => value > 0 },
       { label: 'Payments ready', value: dashboard => dashboard.pendingPaymentCount, attention: value => value > 0 },
       { label: 'Assigned projects', value: dashboard => dashboard.visibleProjectCount },

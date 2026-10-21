@@ -17,6 +17,7 @@ import {
   type SupplierQuote,
   type SupplierSummary,
 } from './api'
+import { statusText } from './statusLabels'
 import './live-api.css'
 
 export interface LiveProcurementViewProps {
@@ -159,7 +160,7 @@ function roundStatusLabel(status: SourcingRoundStatus): string {
 function orderStatusLabel(status: PurchaseOrderStatus): string {
   const labels: Record<PurchaseOrderStatus, string> = {
     Draft: 'Draft',
-    Submitted: 'Waiting for approval',
+    Submitted: 'Waiting for Supervisor',
     Approved: 'Approved',
     Issued: 'Sent to supplier',
     Rejected: 'Rejected',
@@ -574,7 +575,7 @@ function MaterialCatalogRequestCard({
     <article className={`material-catalog-card status-${request.status.toLowerCase()}`}>
       <header>
         <div><h3>{request.name}</h3><span>{request.unit}</span></div>
-        <b>{request.status}</b>
+        <b>{statusText('MaterialCatalogRequest', request.status)}</b>
       </header>
       <dl>
         <div><dt>Project</dt><dd>{request.projectName}</dd></div>

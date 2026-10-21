@@ -46,7 +46,7 @@ function formatDateTime(value: string | null) {
 }
 
 function statusLabel(status: SupplierOnboardingStatus) {
-  if (status === 'Pending') return 'Awaiting independent review'
+  if (status === 'Pending') return 'Waiting for Finance Officer or CEO'
   return status
 }
 
@@ -76,7 +76,8 @@ export function LiveSuppliersView({ currentUser }: LiveSuppliersViewProps) {
   const [message, setMessage] = useState<string | null>(null)
   const [refreshKey, setRefreshKey] = useState(0)
   const [blacklistBusyId, setBlacklistBusyId] = useState<number | null>(null)
-  const canSubmit = currentUser.role === 'Procurement Officer'
+  const canAdd = currentUser.role === 'Procurement Officer' || currentUser.role === 'CEO'
+  // Applications sent before suppliers could be added directly are still decided here.
   const canReview = currentUser.role === 'CEO' || currentUser.role === 'Finance Officer'
 
   useEffect(() => {
@@ -113,37 +114,25 @@ export function LiveSuppliersView({ currentUser }: LiveSuppliersViewProps) {
   }, [refreshKey])
 
   const pendingCount = requests.filter(request => request.status === 'Pending').length
+  const availableCount = suppliers.filter(supplier => !supplier.isBlacklisted).length
   const sectionParam = searchParams.get('section')
-  const selectedFinanceSection: SupplierOnboardingStatus | 'Register' = sectionParam === 'approved'
-    ? 'Approved'
-    : sectionParam === 'rejected'
-      ? 'Rejected'
-      : sectionParam === 'register'
-        ? 'Register'
-        : 'Pending'
-  const selectedProcurementSection = sectionParam === 'new'
-    ? 'New'
-    : sectionParam === 'register'
-      ? 'Register'
-      : 'Applications'
+  const section = canAdd && (sectionParam === 'add' || sectionParam === 'new')
+    ? 'add'
+    : sectionParam === 'applications' && requests.length > 0
+      ? 'applications'
+      : 'register'
+  const tabs: Array<{ key: string; label: string; params: Record<string, string> }> = [
+    { key: 'register', label: 'Supplier register', params: {} },
+    ...(canAdd ? [{ key: 'add', label: 'Add supplier', params: { section: 'add' } }] : []),
+    ...(requests.length > 0
+      ? [{ key: 'applications', label: pendingCount > 0 ? `Earlier applications (${pendingCount} waiting)` : 'Earlier applications', params: { section: 'applications' } }]
+      : []),
+  ]
   const requestGroups: Array<{ status: SupplierOnboardingStatus; title: string; items: SupplierOnboardingRequest[] }> = [
-    { status: 'Pending', title: 'Awaiting review', items: requests.filter(request => request.status === 'Pending') },
+    { status: 'Pending', title: 'Waiting for Finance Officer or CEO', items: requests.filter(request => request.status === 'Pending') },
     { status: 'Approved', title: 'Approved applications', items: requests.filter(request => request.status === 'Approved') },
     { status: 'Rejected', title: 'Rejected applications', items: requests.filter(request => request.status === 'Rejected') },
   ]
-  const visibleRequestCount = currentUser.role === 'Finance Officer'
-    ? requestGroups.find(group => group.status === selectedFinanceSection)?.items.length ?? 0
-    : requests.length
-  const showApplications = currentUser.role === 'Finance Officer'
-    ? selectedFinanceSection !== 'Register'
-    : currentUser.role === 'Procurement Officer'
-      ? selectedProcurementSection === 'Applications'
-      : true
-  const showRegister = currentUser.role === 'Finance Officer'
-    ? selectedFinanceSection === 'Register'
-    : currentUser.role === 'Procurement Officer'
-      ? selectedProcurementSection === 'Register'
-      : true
 
   async function toggleBlacklist(supplier: SupplierSummary) {
     setBlacklistBusyId(supplier.id)
@@ -163,60 +152,53 @@ export function LiveSuppliersView({ currentUser }: LiveSuppliersViewProps) {
     <div className="supplier-view ceo-readable">
       <header className="supplier-page-head">
         <div>
-          {currentUser.role !== 'Finance Officer' && <span>SUPPLIER CONTROL</span>}
-          <h1>{currentUser.role === 'Finance Officer' ? 'Supplier approvals' : 'Supplier onboarding'}</h1>
+          <span>SUPPLIERS</span>
+          <h1>Suppliers</h1>
         </div>
-        <div className={pendingCount > 0 ? 'needs-review' : ''}>
-          <strong>{requestsLoading || requestsLoadError ? 'Unavailable' : pendingCount}</strong>
-          <span>awaiting review</span>
+        <div>
+          <strong>{suppliersLoading || suppliersLoadError ? 'Unavailable' : availableCount}</strong>
+          <span>available for quotes</span>
         </div>
       </header>
 
       {error && <div className="supplier-notice error" role="alert">{error}</div>}
       {message && <div className="supplier-notice success">{message}</div>}
 
-      {currentUser.role === 'Procurement Officer' && <nav className="ops-action-nav supplier-control-nav procurement-supplier-nav" aria-label="Supplier onboarding sections">
-        <button type="button" className={selectedProcurementSection === 'New' ? 'active' : ''} aria-current={selectedProcurementSection === 'New' ? 'page' : undefined} onClick={() => setSearchParams({ section: 'new' }, { replace: true })}>New supplier</button>
-        <button type="button" className={selectedProcurementSection === 'Applications' ? 'active' : ''} aria-current={selectedProcurementSection === 'Applications' ? 'page' : undefined} onClick={() => setSearchParams({}, { replace: true })}>Applications</button>
-        <button type="button" className={selectedProcurementSection === 'Register' ? 'active' : ''} aria-current={selectedProcurementSection === 'Register' ? 'page' : undefined} onClick={() => setSearchParams({ section: 'register' }, { replace: true })}>Supplier register</button>
+      {tabs.length > 1 && <nav className={`ops-action-nav supplier-control-nav ${tabs.length === 3 ? 'procurement-supplier-nav' : 'two-tabs'}`} aria-label="Supplier sections">
+        {tabs.map(tab => (
+          <button
+            key={tab.key}
+            type="button"
+            className={section === tab.key ? 'active' : ''}
+            aria-current={section === tab.key ? 'page' : undefined}
+            onClick={() => setSearchParams(tab.params, { replace: true })}
+          >
+            {tab.label}
+          </button>
+        ))}
       </nav>}
 
-      {canSubmit && selectedProcurementSection === 'New' && (
-        <SupplierApplicationForm
-          initiallyOpen
-          onSubmitted={request => {
-            setRequests(current => [request, ...current])
-            setMessage('Supplier application submitted.')
+      {section === 'add' && (
+        <SupplierForm
+          onAdded={supplier => {
+            setSuppliers(current => [...current, supplier].sort((left, right) => left.name.localeCompare(right.name)))
+            setMessage(`${supplier.name} was added and can now be asked for quotes.`)
             setSearchParams({}, { replace: true })
           }}
         />
       )}
 
-      {currentUser.role === 'Finance Officer' && <nav className="ops-action-nav supplier-control-nav" aria-label="Supplier approval sections">
-        <button type="button" className={selectedFinanceSection === 'Pending' ? 'active' : ''} aria-current={selectedFinanceSection === 'Pending' ? 'page' : undefined} onClick={() => setSearchParams({}, { replace: true })}>Waiting review</button>
-        <button type="button" className={selectedFinanceSection === 'Approved' ? 'active' : ''} aria-current={selectedFinanceSection === 'Approved' ? 'page' : undefined} onClick={() => setSearchParams({ section: 'approved' }, { replace: true })}>Approved</button>
-        <button type="button" className={selectedFinanceSection === 'Rejected' ? 'active' : ''} aria-current={selectedFinanceSection === 'Rejected' ? 'page' : undefined} onClick={() => setSearchParams({ section: 'rejected' }, { replace: true })}>Rejected</button>
-        <button type="button" className={selectedFinanceSection === 'Register' ? 'active' : ''} aria-current={selectedFinanceSection === 'Register' ? 'page' : undefined} onClick={() => setSearchParams({ section: 'register' }, { replace: true })}>Supplier register</button>
-      </nav>}
-
-      {showApplications && <section className="supplier-panel">
+      {section === 'applications' && <section className="supplier-panel">
         <header className="supplier-section-head">
           <div>
-            {currentUser.role !== 'Finance Officer' && <span>APPLICATIONS</span>}
-            <h2>{currentUser.role === 'Finance Officer' ? requestGroups.find(group => group.status === selectedFinanceSection)?.title : 'Onboarding decisions'}</h2>
+            <span>EARLIER APPLICATIONS</span>
+            <h2>Sent before suppliers could be added directly</h2>
           </div>
         </header>
-
         {requestsLoadError && <div className="supplier-notice error" role="alert">Supplier applications could not be loaded: {requestsLoadError}</div>}
-        {requestsLoading ? (
-          <SupplierLoading />
-        ) : visibleRequestCount === 0 ? (
-          requestsLoadError ? null : <div className="supplier-empty">{currentUser.role === 'Finance Officer'
-            ? selectedFinanceSection === 'Pending' ? 'No supplier application is waiting for review.' : `No ${String(selectedFinanceSection).toLowerCase()} supplier application recorded.`
-            : 'No supplier applications have been submitted.'}</div>
-        ) : (
+        {requestsLoading ? <SupplierLoading /> : (
           <div className="supplier-decision-groups">
-            {requestGroups.filter(group => currentUser.role !== 'Finance Officer' || group.status === selectedFinanceSection).map(group => group.items.length > 0 && (
+            {requestGroups.map(group => group.items.length > 0 && (
               <section className={`supplier-decision-group ${group.status.toLowerCase()}`} key={group.status}>
                 <header><h3>{group.title}</h3><strong>{group.items.length}</strong></header>
                 <div className="supplier-request-list">
@@ -239,18 +221,18 @@ export function LiveSuppliersView({ currentUser }: LiveSuppliersViewProps) {
         )}
       </section>}
 
-      {showRegister && <section className="supplier-panel">
+      {section === 'register' && <section className="supplier-panel">
         <header className="supplier-section-head">
           <div>
-            <span>APPROVED REGISTER</span>
-            <h2>Suppliers available for quotation</h2>
+            <span>SUPPLIER REGISTER</span>
+            <h2>Suppliers available for quotes</h2>
           </div>
-          <b>{suppliersLoading || suppliersLoadError ? 'Unavailable' : suppliers.filter(supplier => !supplier.isBlacklisted).length} available</b>
+          <b>{suppliersLoading || suppliersLoadError ? 'Unavailable' : availableCount} available</b>
         </header>
         {suppliersLoadError && <div className="supplier-notice error" role="alert">Supplier register could not be loaded: {suppliersLoadError}</div>}
         {suppliersLoading ? <SupplierLoading /> : suppliers.length === 0 ? (
           suppliersLoadError ? null :
-          <div className="supplier-empty">No supplier has completed approval yet.</div>
+          <div className="supplier-empty">{canAdd ? 'No suppliers yet. Use Add supplier for the companies you buy from.' : 'No suppliers have been added yet.'}</div>
         ) : (
           <div className="approved-supplier-list">
             {suppliers.map(supplier => (
@@ -261,7 +243,7 @@ export function LiveSuppliersView({ currentUser }: LiveSuppliersViewProps) {
                   <span>{supplier.category || 'Uncategorised supplier'}</span>
                 </div>
                 <span className={`supplier-register-state ${supplier.isBlacklisted ? 'blocked' : ''}`}>
-                  {supplier.isBlacklisted ? 'Blocked' : 'Approved'}
+                  {supplier.isBlacklisted ? 'Blocked' : 'Available'}
                 </span>
                 {currentUser.role === 'CEO' && (
                   <button
@@ -283,14 +265,7 @@ export function LiveSuppliersView({ currentUser }: LiveSuppliersViewProps) {
   )
 }
 
-function SupplierApplicationForm({
-  onSubmitted,
-  initiallyOpen = false,
-}: {
-  onSubmitted: (request: SupplierOnboardingRequest) => void
-  initiallyOpen?: boolean
-}) {
-  const [open, setOpen] = useState(initiallyOpen)
+function SupplierForm({ onAdded }: { onAdded: (supplier: SupplierSummary) => void }) {
   const [form, setForm] = useState({
     name: '', contactPerson: '', phoneNumber: '', email: '', kraPin: '', mpesaNumber: '', category: '',
   })
@@ -303,7 +278,7 @@ function SupplierApplicationForm({
     setBusy(true)
     setError(null)
     try {
-      const request = await supplierOnboardingApi.submit({
+      const supplier = await suppliersApi.create({
         name: form.name.trim(),
         contactPerson: form.contactPerson.trim(),
         phoneNumber: form.phoneNumber.trim(),
@@ -312,9 +287,8 @@ function SupplierApplicationForm({
         mpesaNumber: form.mpesaNumber.trim() || null,
         category: form.category,
       })
-      onSubmitted(request)
+      onAdded(supplier)
       setForm({ name: '', contactPerson: '', phoneNumber: '', email: '', kraPin: '', mpesaNumber: '', category: '' })
-      setOpen(false)
     } catch (requestError) {
       setError(messageFrom(requestError))
     } finally {
@@ -323,27 +297,25 @@ function SupplierApplicationForm({
   }
 
   return (
-    <section className={`supplier-application ${open ? 'open' : ''}`}>
-      <button type="button" className="supplier-application-toggle" onClick={() => setOpen(value => !value)}>
+    <section className="supplier-application open">
+      <div className="supplier-application-toggle" role="presentation">
         <span>+</span>
-        <div><strong>Submit a new supplier</strong></div>
-        <b>{open ? 'Close' : 'Open form'}</b>
-      </button>
-      {open && (
-        <form onSubmit={submit}>
-          {error && <div className="supplier-notice error" role="alert">{error}</div>}
-          <div className="supplier-form-grid">
-            <label><span>Registered business name</span><input required minLength={2} maxLength={200} value={form.name} onChange={event => setForm({ ...form, name: event.currentTarget.value })}/></label>
-            <label><span>Supply category</span><select required value={form.category} onChange={event => setForm({ ...form, category: event.currentTarget.value })}><option value="">Choose category</option>{supplierCategories.map(category => <option key={category}>{category}</option>)}</select></label>
-            <label><span>Contact person</span><input required minLength={2} maxLength={150} value={form.contactPerson} onChange={event => setForm({ ...form, contactPerson: event.currentTarget.value })}/></label>
-            <label><span>Phone number</span><input required type="tel" minLength={7} maxLength={30} value={form.phoneNumber} onChange={event => setForm({ ...form, phoneNumber: event.currentTarget.value })}/></label>
-            <label><span>Email <small>Optional</small></span><input type="email" maxLength={254} value={form.email} onChange={event => setForm({ ...form, email: event.currentTarget.value })}/></label>
-            <label><span>KRA PIN</span><input required minLength={5} maxLength={20} value={form.kraPin} onChange={event => setForm({ ...form, kraPin: event.currentTarget.value.toUpperCase() })}/></label>
-            <label><span>M-Pesa business number <small>Optional</small></span><input type="tel" maxLength={30} value={form.mpesaNumber} onChange={event => setForm({ ...form, mpesaNumber: event.currentTarget.value })}/></label>
-          </div>
-          <div className="supplier-form-actions" style={{ justifyContent: 'flex-end' }}><button disabled={busy}>{busy ? 'Submitting…' : 'Send for approval'}</button></div>
-        </form>
-      )}
+        <div><strong>Add a supplier</strong></div>
+        <b>Ready for quotes as soon as it is saved</b>
+      </div>
+      <form onSubmit={submit}>
+        {error && <div className="supplier-notice error" role="alert">{error}</div>}
+        <div className="supplier-form-grid">
+          <label><span>Registered business name</span><input required minLength={2} maxLength={200} value={form.name} onChange={event => setForm({ ...form, name: event.currentTarget.value })}/></label>
+          <label><span>Supply category</span><select required value={form.category} onChange={event => setForm({ ...form, category: event.currentTarget.value })}><option value="">Choose category</option>{supplierCategories.map(category => <option key={category}>{category}</option>)}</select></label>
+          <label><span>Contact person</span><input required minLength={2} maxLength={150} value={form.contactPerson} onChange={event => setForm({ ...form, contactPerson: event.currentTarget.value })}/></label>
+          <label><span>Phone number</span><input required type="tel" minLength={7} maxLength={30} value={form.phoneNumber} onChange={event => setForm({ ...form, phoneNumber: event.currentTarget.value })}/></label>
+          <label><span>Email <small>Optional</small></span><input type="email" maxLength={254} value={form.email} onChange={event => setForm({ ...form, email: event.currentTarget.value })}/></label>
+          <label><span>KRA PIN</span><input required minLength={5} maxLength={20} value={form.kraPin} onChange={event => setForm({ ...form, kraPin: event.currentTarget.value.toUpperCase() })}/></label>
+          <label><span>M-Pesa business number <small>Optional</small></span><input type="tel" maxLength={30} value={form.mpesaNumber} onChange={event => setForm({ ...form, mpesaNumber: event.currentTarget.value })}/></label>
+        </div>
+        <div className="supplier-form-actions" style={{ justifyContent: 'flex-end' }}><button disabled={busy}>{busy ? 'Saving…' : 'Add supplier'}</button></div>
+      </form>
     </section>
   )
 }

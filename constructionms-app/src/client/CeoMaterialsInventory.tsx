@@ -301,7 +301,7 @@ export function CeoMaterialsInventory(props: Props) {
       <div className="ceo-inventory-summary">
         <article><strong>{positions.length}</strong><span>materials tracked</span></article>
         <article className={positions.some(item => item.status === 'Out of stock') ? 'attention' : ''}><strong>{positions.filter(item => item.status === 'Out of stock').length}</strong><span>out of stock</span></article>
-        <article className={pendingHandovers.length ? 'attention' : ''}><strong>{pendingHandovers.length}</strong><span>handovers awaiting confirmation</span></article>
+        <article className={pendingHandovers.length ? 'attention' : ''}><strong>{pendingHandovers.length}</strong><span>handovers waiting for the Foreman</span></article>
         <article className={countDifferences.length ? 'attention' : ''}><strong>{countDifferences.length}</strong><span>count differences</span></article>
       </div>
 
@@ -366,10 +366,10 @@ export function CeoMaterialsInventory(props: Props) {
     {tab === 'exceptions' && <section className="ceo-inventory-panel exception-panel">
       <header><h2>Counts & exceptions</h2></header>
       <div className="exception-summary"><span><strong>{pendingHandovers.length}</strong> handovers waiting</span><span><strong>{countDifferences.length}</strong> count differences</span><span><strong>{disputedTransfers.length}</strong> disputed transfers</span></div>
-      <ExceptionList title="Handovers awaiting confirmation" empty="No handovers are waiting.">
+      <ExceptionList title="Handovers waiting for the Foreman" empty="No handovers are waiting.">
         {pendingHandovers.map(item => <article key={item.id}><div><strong>{item.materialName}</strong><span>{item.projectName} · issued to {item.issuedToName}</span></div><b>{quantity(item.quantityIssued, item.materialUnit)}</b></article>)}
       </ExceptionList>
-      <ExceptionList title="Count differences" empty="No count difference is awaiting review.">
+      <ExceptionList title="Count differences" empty="No count difference is waiting for the Supervisor.">
         {countDifferences.map(item => <article key={item.id}><div><strong>{item.materialName}</strong><span>{item.projectName} · counted by {item.countedByName}</span></div><b>{item.variance > 0 ? '+' : ''}{quantity(item.variance, item.materialUnit)}</b></article>)}
       </ExceptionList>
       <ExceptionList title="Transfer differences" empty="No transfer is disputed.">
@@ -444,7 +444,7 @@ function MaterialStockCard({ position, movements, issues, onMovementClick, onBac
       <span>In transit<strong>{quantity(position.inTransit, position.unit)}</strong></span>
       <span className="total">Total company-controlled quantity<strong>{quantity(position.totalControlled, position.unit)}</strong></span>
     </div>
-    {custody.length > 0 && <section className="ceo-inventory-panel"><header><h2>Site custody</h2></header><div className="custody-list">{custody.map(item => <article key={item.id}><div><strong>{item.issuedToName}</strong><span>{item.projectName}</span></div><b>{quantity(custodyAmount(item), item.materialUnit)}</b><span>{item.status === 'AwaitingConfirmation' ? 'Awaiting confirmation' : 'Confirmed'}</span></article>)}</div></section>}
+    {custody.length > 0 && <section className="ceo-inventory-panel"><header><h2>Site custody</h2></header><div className="custody-list">{custody.map(item => <article key={item.id}><div><strong>{item.issuedToName}</strong><span>{item.projectName}</span></div><b>{quantity(custodyAmount(item), item.materialUnit)}</b><span>{item.status === 'AwaitingConfirmation' ? 'Waiting for Foreman to confirm' : 'Confirmed'}</span></article>)}</div></section>}
     <section className="ceo-inventory-panel"><header><h2>Material history</h2></header><MovementHistory movements={movements} onMovementClick={onMovementClick}/></section>
   </section>
 }

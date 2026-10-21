@@ -32,6 +32,7 @@ import { CeoOverview } from './CeoOverview'
 import { OperationalOverview } from './OperationalOverview'
 import { PendingVerification } from './pendingVerification'
 import { RequestProgress } from './RequestProgress'
+import { statusText } from './statusLabels'
 import './live-api.css'
 import './ceo-overview.css'
 
@@ -1663,7 +1664,7 @@ export function LiveRequisitionsView({ currentUser }: LiveRequisitionsViewProps)
                 {catalogRequests.map((request) => (
                   <article key={request.id}>
                     <span><strong>{request.name}</strong><small>{request.unit} · {request.projectName}</small></span>
-                    <b className={`status-${request.status.toLowerCase()}`}>{request.status}</b>
+                    <b className={`status-${request.status.toLowerCase()}`}>{statusText('MaterialCatalogRequest', request.status)}</b>
                     {request.reviewNotes && <small>{request.reviewNotes}</small>}
                   </article>
                 ))}

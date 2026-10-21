@@ -1,6 +1,7 @@
 import { InvalidOperationError } from '@/ConstructionMS.Application/Common/Exceptions'
 import { INT_MAX, Pagination } from '@/ConstructionMS.Application/Common/Pagination'
 import { createPaginatedResult } from '@/ConstructionMS.Application/Common/PaginatedResult'
+import { CreateSupplierRequestDto } from '@/ConstructionMS.Application/DTOs/Suppliers/CreateSupplierRequestDto'
 import { SetSupplierBlacklistRequestDto } from '@/ConstructionMS.Application/DTOs/Suppliers/SetSupplierBlacklistRequestDto'
 import type { SupplierResponseDto } from '@/ConstructionMS.Application/DTOs/Suppliers/SupplierResponseDto'
 import type { SupplierSummaryResponseDto } from '@/ConstructionMS.Application/DTOs/Suppliers/SupplierSummaryResponseDto'
@@ -40,6 +41,13 @@ export class SuppliersControllerImpl extends ControllerBase {
     }
 
     return this.ok(ApiResponse.ok(supplier))
+  }
+
+  /** Adds a supplier to the register; no separate approval step is needed. */
+  async create(): Promise<ActionResult> {
+    const request = await this.fromBody(CreateSupplierRequestDto)
+    const supplier = await this.supplierService.createAsync(request)
+    return this.created(`/api/v1/suppliers/${supplier.id}`, ApiResponse.ok(supplier))
   }
 
   /** Updates supplier identity, tax, contact and payment metadata. */
@@ -93,6 +101,7 @@ export const SuppliersController: ControllerMetadata<SuppliersControllerImpl> = 
   actions: [
     { method: 'GET', template: '', handler: c => c.getAll() },
     { method: 'GET', template: '{id:int}', handler: c => c.getById() },
+    { method: 'POST', template: '', roles: ['Procurement Officer', 'CEO'], handler: c => c.create() },
     { method: 'PUT', template: '{id:int}', roles: ['CEO'], handler: c => c.update() },
     { method: 'PATCH', template: '{id:int}/blacklist', roles: ['CEO'], handler: c => c.setBlacklistStatus() },
   ],

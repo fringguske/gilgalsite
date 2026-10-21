@@ -605,6 +605,13 @@ export const suppliersApi = {
   get: (supplierId: number, signal?: AbortSignal) =>
     request<Supplier>(`/suppliers/${supplierId}`, { signal }),
 
+  create: (payload: CreateSupplierOnboardingRequest, signal?: AbortSignal) =>
+    request<Supplier>('/suppliers', {
+      method: 'POST',
+      body: payload,
+      signal,
+    }),
+
   update: (supplierId: number, payload: UpdateSupplierRequest, signal?: AbortSignal) =>
     request<Supplier>(`/suppliers/${supplierId}`, {
       method: 'PUT',
