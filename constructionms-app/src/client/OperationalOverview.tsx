@@ -66,7 +66,6 @@ const workspaceConfig: Record<SimplifiedRole, WorkspaceConfig> = {
       { label: 'New material request', to: '/requisitions?new=1' },
       { label: 'My requests', to: '/requisitions' },
       { label: 'Materials with me', to: '/inventory' },
-      { label: 'Returns and close-out', to: '/custody-close-out' },
     ],
     metrics: [
       { label: 'Work waiting', value: (_dashboard, tasks) => tasks.totalCount, attention: value => value > 0 },

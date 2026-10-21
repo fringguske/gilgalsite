@@ -691,7 +691,12 @@ export class InventoryWorkflowService implements IInventoryWorkflowService {
     const type = InputNormalizer.requiredText(request.usageType, 'UsageType', 1, 20)
     if (type !== 'Used' && type !== 'Wastage') throw new ArgumentError('Usage type must be Used or Wastage.')
     const quantity = InputNormalizer.positive(request.quantity, 'Quantity', 18, 3)
-    const reason = InputNormalizer.requiredText(request.purposeOrReason, 'PurposeOrReason', 3, 500)
+    // The work area or purpose of material used is optional; wastage always needs its reason.
+    const givenReason = InputNormalizer.optionalText(request.purposeOrReason, 'PurposeOrReason', 500)
+    if (type === 'Wastage' && (givenReason === null || givenReason.length < 3)) {
+      throw new ArgumentError('Give the reason for the wastage.', 'PurposeOrReason')
+    }
+    const reason = givenReason ?? ''
     const evidence = InputNormalizer.optionalText(request.evidenceReference, 'EvidenceReference', 500)
     const idempotencyKey = InputNormalizer.requiredText(request.idempotencyKey, 'IdempotencyKey', 8, 100)
     await this.db.transaction(async (tx) => {

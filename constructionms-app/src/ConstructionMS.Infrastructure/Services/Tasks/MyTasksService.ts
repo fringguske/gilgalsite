@@ -8,8 +8,6 @@ import type { IActorRoleResolver } from '@/ConstructionMS.Application/Services/A
 import type { IMyTasksService } from '@/ConstructionMS.Application/Services/Tasks/IMyTasksService'
 import {
   ControlledCorrectionStatuses,
-  CustodyCloseoutStatuses,
-  MaterialReturnStatuses,
   OpeningPositionStatuses,
   OpeningPositionTypes,
   OperationalPeriodScopes,
@@ -35,11 +33,7 @@ import {
   goodsReceiptTechnicalAcceptances,
   goodsReceipts,
   materialCatalogRequests,
-  materialCustodyCloseoutDecisions,
-  materialCustodyCloseouts,
   materialIssues,
-  materialReturns,
-  materialUsageRecords,
   materials,
   openingInventoryLines,
   openingPositionBatches,
@@ -443,34 +437,6 @@ export class MyTasksService implements IMyTasksService {
       })
     }
 
-    const closeouts = await this.db
-      .select({
-        id: materialCustodyCloseouts.id,
-        closeoutNumber: materialCustodyCloseouts.closeoutNumber,
-        submittedAt: materialCustodyCloseouts.submittedAt,
-        projectId: materialIssues.projectId,
-        projectName: projects.name,
-        materialName: materials.name,
-        unit: materials.unit,
-        confirmedQuantity: materialCustodyCloseouts.confirmedQuantity,
-      })
-      .from(materialCustodyCloseouts)
-      .innerJoin(materialIssues, eq(materialCustodyCloseouts.materialIssueId, materialIssues.id))
-      .innerJoin(projects, eq(materialIssues.projectId, projects.id))
-      .innerJoin(materials, eq(materialIssues.materialId, materials.id))
-      .where(and(
-        inArray(materialIssues.projectId, projectIds),
-        eq(materialCustodyCloseouts.status, CustodyCloseoutStatuses.AwaitingReview)))
-    for (const item of closeouts) {
-      this.add(tasks, {
-        key: `custody-closeout-review:${item.id}`, type: 'CustodyCloseoutReview', title: 'Review material custody close-out',
-        detail: `${quantity(item.confirmedQuantity)} ${item.unit} of ${item.materialName} · ${item.closeoutNumber}`,
-        requiredRole: 'Supervisor', projectId: item.projectId, projectName: item.projectName,
-        sourceType: 'MaterialCustodyCloseout', sourceId: item.id, targetPath: '/custody-close-out',
-        openedAt: item.submittedAt, urgent: true,
-      })
-    }
-
     await this.addPeriodSubmissionTasksAsync(tasks, 'Supervisor', OperationalPeriodScopes.Inventory, projectIds)
 
     const pettyCash = await this.db
@@ -646,85 +612,15 @@ export class MyTasksService implements IMyTasksService {
       .where(and(
         eq(materialIssues.issuedToUserId, userId),
         inArray(materialIssues.projectId, projectIds),
-        inArray(materialIssues.status, [MaterialIssueStatuses.AwaitingConfirmation, MaterialIssueStatuses.Confirmed])))
-    if (issues.length === 0) return
-    const issueIds = issues.map(item => item.issue.id)
-    const usage = await this.db
-      .select({ materialIssueId: materialUsageRecords.materialIssueId, quantity: materialUsageRecords.quantity })
-      .from(materialUsageRecords)
-      .where(inArray(materialUsageRecords.materialIssueId, issueIds))
-    const returns = await this.db
-      .select({
-        materialIssueId: materialReturns.materialIssueId,
-        status: materialReturns.status,
-        quantityAccepted: materialReturns.quantityAccepted,
-        quantityOffered: materialReturns.quantityOffered,
-      })
-      .from(materialReturns)
-      .where(inArray(materialReturns.materialIssueId, issueIds))
-    const closeouts = await this.db
-      .select({
-        materialIssueId: materialCustodyCloseouts.materialIssueId,
-        revision: materialCustodyCloseouts.revision,
-        status: materialCustodyCloseouts.status,
-        decidedAt: materialCustodyCloseoutDecisions.decidedAt,
-      })
-      .from(materialCustodyCloseouts)
-      .leftJoin(materialCustodyCloseoutDecisions,
-        eq(materialCustodyCloseoutDecisions.materialCustodyCloseoutId, materialCustodyCloseouts.id))
-      .where(inArray(materialCustodyCloseouts.materialIssueId, issueIds))
-
+        eq(materialIssues.status, MaterialIssueStatuses.AwaitingConfirmation)))
+    // Returns and custody close-outs are switched off for now, so confirming receipt is the
+    // Foreman's last task for an issue; recording use stays available but is not chased.
     for (const { issue: item, projectName, materialName, unit } of issues) {
-      if (item.status === MaterialIssueStatuses.AwaitingConfirmation) {
-        this.add(tasks, {
-          key: `material-handover:${item.id}`, type: 'MaterialHandoverConfirmation', title: 'Confirm materials received',
-          detail: `${quantity(item.quantityIssued)} ${unit} of ${materialName}`, requiredRole: 'Foreman',
-          projectId: item.projectId, projectName, sourceType: 'MaterialIssue', sourceId: item.id,
-          targetPath: '/inventory', openedAt: item.issuedAt, handover: true,
-        })
-        continue
-      }
-
-      const issueReturns = returns.filter(entry => entry.materialIssueId === item.id)
-      const accounted = sum(usage.filter(entry => entry.materialIssueId === item.id).map(entry => entry.quantity))
-        .plus(sum(issueReturns
-          .filter(entry => entry.status === MaterialReturnStatuses.Received)
-          .map(entry => entry.quantityAccepted ?? 0)))
-      const pendingReturn = sum(issueReturns
-        .filter(entry => entry.status === MaterialReturnStatuses.AwaitingReceipt)
-        .map(entry => entry.quantityOffered))
-      const confirmed = dec(item.confirmedQuantity ?? 0)
-      const available = confirmed.minus(accounted).minus(pendingReturn)
-      if (available.gt(0)) {
-        this.add(tasks, {
-          key: `material-accountability:${item.id}`, type: 'MaterialAccountability', title: 'Record material use',
-          detail: `${quantity(available)} ${unit} of ${materialName} remaining`, requiredRole: 'Foreman',
-          projectId: item.projectId, projectName, sourceType: 'MaterialIssue', sourceId: item.id,
-          targetPath: '/inventory', openedAt: item.confirmedAt ?? item.issuedAt,
-        })
-        continue
-      }
-
-      const latestCloseout = closeouts
-        .filter(entry => entry.materialIssueId === item.id)
-        .reduce<(typeof closeouts)[number] | null>((current, entry) =>
-          current === null || entry.revision > current.revision ? entry : current, null)
-      if (pendingReturn.gt(0)
-        || latestCloseout?.status === CustodyCloseoutStatuses.AwaitingReview
-        || latestCloseout?.status === CustodyCloseoutStatuses.Approved) {
-        continue
-      }
-
-      const revision = (latestCloseout?.revision ?? 0) + 1
       this.add(tasks, {
-        key: `custody-closeout-submit:${item.id}:r${revision}`, type: 'CustodyCloseoutSubmission',
-        title: latestCloseout?.status === CustodyCloseoutStatuses.Returned
-          ? 'Resubmit material custody close-out'
-          : 'Submit material custody close-out',
-        detail: `${quantity(confirmed)} ${unit} of ${materialName}`, requiredRole: 'Foreman',
+        key: `material-handover:${item.id}`, type: 'MaterialHandoverConfirmation', title: 'Confirm materials received',
+        detail: `${quantity(item.quantityIssued)} ${unit} of ${materialName}`, requiredRole: 'Foreman',
         projectId: item.projectId, projectName, sourceType: 'MaterialIssue', sourceId: item.id,
-        targetPath: '/custody-close-out',
-        openedAt: latestCloseout?.decidedAt ?? item.confirmedAt ?? item.issuedAt, urgent: true,
+        targetPath: '/inventory', openedAt: item.issuedAt, handover: true,
       })
     }
   }
@@ -833,37 +729,6 @@ export class MyTasksService implements IMyTasksService {
         projectName: receive ? toProjectName : fromProjectName,
         sourceType: 'StockTransfer', sourceId: item.id, targetPath: '/inventory',
         openedAt: receive ? item.dispatchedAt ?? item.requestedAt : item.requestedAt, urgent: true,
-      })
-    }
-
-    const returns = await this.db
-      .select({
-        id: materialReturns.id,
-        returnNumber: materialReturns.returnNumber,
-        quantityOffered: materialReturns.quantityOffered,
-        returnedAt: materialReturns.returnedAt,
-        projectId: materialIssues.projectId,
-        projectName: projects.name,
-        materialName: materials.name,
-        unit: materials.unit,
-        foremanName: users.fullName,
-      })
-      .from(materialReturns)
-      .innerJoin(materialIssues, eq(materialReturns.materialIssueId, materialIssues.id))
-      .innerJoin(projects, eq(materialIssues.projectId, projects.id))
-      .innerJoin(materials, eq(materialIssues.materialId, materials.id))
-      .innerJoin(users, eq(materialReturns.returnedByUserId, users.id))
-      .where(and(
-        inArray(materialIssues.projectId, projectIds),
-        eq(materialReturns.status, MaterialReturnStatuses.AwaitingReceipt),
-        ne(materialReturns.returnedByUserId, userId)))
-    for (const item of returns) {
-      this.add(tasks, {
-        key: `material-return-receive:${item.id}`, type: 'MaterialReturnReceipt', title: 'Receive returned material',
-        detail: `${quantity(item.quantityOffered)} ${item.unit} of ${item.materialName} from ${item.foremanName}`,
-        requiredRole: 'Storekeeper', projectId: item.projectId, projectName: item.projectName,
-        sourceType: 'MaterialReturn', sourceId: item.id, targetPath: '/custody-close-out',
-        openedAt: item.returnedAt, handover: true,
       })
     }
   }

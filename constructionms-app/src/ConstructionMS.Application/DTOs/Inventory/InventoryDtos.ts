@@ -37,7 +37,8 @@ export type ConfirmMaterialIssueRequestDto = InferDto<typeof ConfirmMaterialIssu
 export const RecordMaterialUsageRequestDto = dto({
   usageType: f.string().required().stringLength(20),
   quantity: f.decimal().range('0.001', QUANTITY_MAX).decimalPrecision(18, 3),
-  purposeOrReason: f.string().required().stringLength(500, 3),
+  /** Optional for use; a wastage record must say why the material was wasted. */
+  purposeOrReason: f.string().nullable().stringLength(500),
   evidenceReference: f.string().nullable().stringLength(500),
   idempotencyKey: f.string().required().stringLength(100, 8),
 })

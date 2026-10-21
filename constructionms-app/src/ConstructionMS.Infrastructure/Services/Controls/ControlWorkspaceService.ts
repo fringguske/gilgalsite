@@ -1592,19 +1592,15 @@ async function getPeriodBlockersAsync(db: DbExecutor, period: OperationalPeriodR
   if (pendingCorrections > 0) blockers.push(`${pendingCorrections} controlled correction(s) awaiting a decision`)
 
   if (period.scope === OperationalPeriodScopes.Inventory) {
+    // Custody close-outs are switched off for now, so only handovers the Foreman has not yet
+    // confirmed hold a period open.
     const unclosedCustody = await countRows(db
       .select({ value: count() })
       .from(materialIssues)
       .where(and(
         eq(materialIssues.projectId, period.projectId),
         lt(materialIssues.issuedAt, endExclusive),
-        ne(materialIssues.status, MaterialIssueStatuses.Disputed),
-        not(exists(db
-          .select({ one: sql`1` })
-          .from(materialCustodyCloseouts)
-          .where(and(
-            eq(materialCustodyCloseouts.materialIssueId, materialIssues.id),
-            eq(materialCustodyCloseouts.status, CustodyCloseoutStatuses.Approved))))))))
+        eq(materialIssues.status, MaterialIssueStatuses.AwaitingConfirmation))))
     const disputedCustody = await countRows(db
       .select({ value: count() })
       .from(materialIssues)
@@ -1664,7 +1660,7 @@ async function getPeriodBlockersAsync(db: DbExecutor, period: OperationalPeriodR
         if ((acceptedByLine.get(lineId) ?? dec(0)).lt(orderedQuantity)) pendingTechnical += 1
       }
     }
-    if (unclosedCustody > 0) blockers.push(`${unclosedCustody} custody record(s) not closed`)
+    if (unclosedCustody > 0) blockers.push(`${unclosedCustody} handover(s) waiting for the Foreman to confirm`)
     if (disputedCustody > 0) blockers.push(`${disputedCustody} disputed handover(s)`)
     if (pendingTransfers > 0) blockers.push(`${pendingTransfers} transfer(s) not completed`)
     if (pendingCounts > 0) blockers.push(`${pendingCounts} stock count(s) awaiting review`)

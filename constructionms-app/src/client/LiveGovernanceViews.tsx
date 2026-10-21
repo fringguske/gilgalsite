@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type FormEvent, type ReactNode } from 'react'
+import { useEffect, useState, type FormEvent, type ReactNode } from 'react'
 import { Link } from 'react-router'
 import {
   accountingPeriodsApi,
@@ -10,11 +10,9 @@ import {
   tasksApi,
   type ControlledCorrection,
   type CurrentUser,
-  type CustodyCloseout,
   type Material,
   type MaterialIssue,
   type MaterialIssueDisputeResolution,
-  type MaterialReturn,
   type MyTask,
   type MyTasksResponse,
   type OpeningPosition,
@@ -207,100 +205,53 @@ export function OpeningPositionsView({ currentUser }: { currentUser: CurrentUser
   </div>
 }
 
-type CustodyAction =
-  | { kind: 'usage'; issue: MaterialIssue }
-  | { kind: 'return'; issue: MaterialIssue }
-  | { kind: 'closeout'; issue: MaterialIssue }
-  | { kind: 'resolve-dispute'; issue: MaterialIssue }
-  | { kind: 'receive-return'; item: MaterialReturn; accept: boolean }
-  | { kind: 'review-closeout'; item: CustodyCloseout; approve: boolean }
-
-function custodyActionTitle(action: CustodyAction) {
-  switch (action.kind) {
-    case 'usage': return 'Record material use'
-    case 'return': return 'Return material to Stores'
-    case 'closeout': return 'Submit custody close-out'
-    case 'resolve-dispute': return 'Resolve handover difference'
-    case 'receive-return': return action.accept ? 'Receive returned material' : 'Reject material return'
-    case 'review-closeout': return action.approve ? 'Approve close-out' : 'Return close-out'
-  }
-}
-
-export function CustodyCloseoutView({ currentUser }: { currentUser: CurrentUser }) {
+/**
+ * Where the Supervisor settles a handover the Foreman reported as short. Returns and custody
+ * close-outs are switched off for now, so this is all that remains of the custody page.
+ */
+export function HandoverDifferencesView({ currentUser }: { currentUser: CurrentUser }) {
   const [issues, setIssues] = useState<MaterialIssue[]>([])
-  const [returns, setReturns] = useState<MaterialReturn[]>([])
-  const [closeouts, setCloseouts] = useState<CustodyCloseout[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [notice, setNotice] = useState<string | null>(null)
   const [refresh, setRefresh] = useState(0)
   const [busy, setBusy] = useState(false)
-  const submitBusyRef = useRef(false)
-  const [action, setAction] = useState<CustodyAction | null>(null)
+  const [resolving, setResolving] = useState<MaterialIssue | null>(null)
+  const [notes, setNotes] = useState('')
+  const [evidenceReference, setEvidenceReference] = useState('')
   const [latestResolution, setLatestResolution] = useState<MaterialIssueDisputeResolution | null>(null)
-  const [form, setForm] = useState({ usageType: 'Used' as 'Used' | 'Wastage', quantity: '', condition: 'Good', notes: '', evidenceReference: '', idempotencyKey: '' })
+  const canResolve = currentUser.role === 'Supervisor'
 
   useEffect(() => {
     const controller = new AbortController()
-    Promise.all([everyPage<MaterialIssue>(page => inventoryApi.issues(controller.signal, { page, pageSize: 100 })), custodyControlsApi.returns(undefined, controller.signal), custodyControlsApi.closeouts(undefined, controller.signal)])
-      .then(([issueResponse, returnResponse, closeoutResponse]) => { setIssues(issueResponse); setReturns(returnResponse); setCloseouts(closeoutResponse); setError(null) })
+    everyPage<MaterialIssue>(page => inventoryApi.issues(controller.signal, { page, pageSize: 100 }))
+      .then(items => { setIssues(items); setError(null) })
       .catch(cause => { if (!(cause instanceof DOMException && cause.name === 'AbortError')) setError(messageOf(cause)) })
       .finally(() => { if (!controller.signal.aborted) setLoading(false) })
     return () => controller.abort()
   }, [refresh])
 
-  async function run(work: () => Promise<unknown>, text: string) {
-    if (submitBusyRef.current) return
-    submitBusyRef.current = true
-    setBusy(true); setError(null); setNotice(null)
-    try { await work(); setNotice(text); setAction(null); setRefresh(value => value + 1) }
-    catch (cause) { setError(messageOf(cause)) }
-    finally { submitBusyRef.current = false; setBusy(false) }
-  }
-
-  function issueRemaining(issue: MaterialIssue) {
-    const reserved = returns.filter(item => item.materialIssueId === issue.id && item.status === 'AwaitingReceipt').reduce((sum, item) => sum + item.quantityOffered, 0)
-    return Math.max(0, issue.unaccountedQuantity - reserved)
-  }
-
-  function open(next: CustodyAction) {
-    const quantity = 'issue' in next ? String(issueRemaining(next.issue)) : next.kind === 'receive-return' ? String(next.item.quantityOffered) : ''
-    setAction(next); setForm({ usageType: 'Used', quantity, condition: 'Good', notes: '', evidenceReference: '', idempotencyKey: crypto.randomUUID() })
-  }
-
-  async function submitAction(event: FormEvent<HTMLFormElement>) {
+  async function resolve(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
-    if (!action || submitBusyRef.current) return
-    const selectedAction = action
-    if (selectedAction.kind === 'usage') return run(() => inventoryApi.recordUsage(selectedAction.issue.id, { usageType: form.usageType, quantity: Number(form.quantity), purposeOrReason: form.notes.trim(), evidenceReference: form.evidenceReference.trim() || null, idempotencyKey: form.idempotencyKey }), 'Material use saved.')
-    if (selectedAction.kind === 'return') return run(() => custodyControlsApi.createReturn({ materialIssueId: selectedAction.issue.id, quantity: Number(form.quantity), condition: form.condition, notes: form.notes.trim() || null, evidenceReference: form.evidenceReference.trim() || null }), 'Return sent to Stores.')
-    if (selectedAction.kind === 'closeout') return run(() => custodyControlsApi.submitCloseout({ materialIssueId: selectedAction.issue.id, notes: form.notes.trim() || null, evidenceReference: form.evidenceReference.trim() || null }), 'Close-out sent to the Supervisor.')
-    if (selectedAction.kind === 'resolve-dispute') {
-      submitBusyRef.current = true
-      setBusy(true); setError(null); setNotice(null)
-      try {
-        const resolution = await custodyControlsApi.resolveDispute(selectedAction.issue.id, form.notes.trim(), form.evidenceReference.trim() || null)
-        setLatestResolution(resolution)
-        setNotice('Handover difference resolved.')
-        setAction(null)
-        setRefresh(value => value + 1)
-      } catch (cause) { setError(messageOf(cause)) }
-      finally { submitBusyRef.current = false; setBusy(false) }
-      return
-    }
-    if (selectedAction.kind === 'receive-return') return run(() => custodyControlsApi.receiveReturn(selectedAction.item.id, { accept: selectedAction.accept, quantityAccepted: selectedAction.accept ? selectedAction.item.quantityOffered : 0, notes: form.notes.trim(), evidenceReference: form.evidenceReference.trim() || null }), selectedAction.accept ? 'Returned material received.' : 'Return rejected.')
-    return run(() => custodyControlsApi.reviewCloseout(selectedAction.item.id, selectedAction.approve, form.notes.trim()), selectedAction.approve ? 'Custody close-out approved.' : 'Custody close-out returned.')
+    if (!resolving || busy) return
+    setBusy(true); setError(null); setNotice(null)
+    try {
+      const resolution = await custodyControlsApi.resolveDispute(resolving.id, notes.trim(), evidenceReference.trim() || null)
+      setLatestResolution(resolution)
+      setNotice('Handover difference resolved.')
+      setResolving(null)
+      setRefresh(value => value + 1)
+    } catch (cause) { setError(messageOf(cause)) }
+    finally { setBusy(false) }
   }
 
-  const visibleIssues = issues.filter(item => currentUser.role !== 'Foreman' || item.issuedToUserId === currentUser.id)
-  const usageRecords = visibleIssues.flatMap(issue => issue.usage.map(usage => ({ issue, usage })))
+  const disputed = issues.filter(item => item.status === 'Disputed')
   return <div className="lav-view governance-view ceo-readable">
-    <header className="lav-page-head"><div><span className="lav-kicker">Material custody</span><h1>Custody close-out</h1></div><span className="lav-count-chip">{closeouts.filter(item => item.status === 'AwaitingReview').length} reviews</span></header>
-    {error && !action && <Notice tone="error">{error}</Notice>}{notice && <Notice tone="success">{notice}</Notice>}
-    {latestResolution && <section className="lav-panel governance-evidence-result"><div><strong>{latestResolution.materialName}</strong><span>{number(latestResolution.returnedToStoreQuantity)} {latestResolution.unit} returned to store · resolved by {latestResolution.resolvedByName}</span></div><RecordEvidence sourceType="MaterialIssueDisputeResolution" sourceId={latestResolution.id} kind="Photo" canUpload={currentUser.role === 'Supervisor' && latestResolution.resolvedByName === currentUser.fullName}/></section>}
-    {(usageRecords.length > 0 || returns.length > 0 || closeouts.length > 0) && <details className="record-evidence-register"><summary>Evidence files</summary><div>{usageRecords.map(({ issue, usage }) => <article key={`usage-${usage.id}`}><strong>{usage.usageType}: {number(usage.quantity)} {issue.materialUnit} · {issue.materialName}</strong><RecordEvidence sourceType="MaterialUsageRecord" sourceId={usage.id} kind="Photo" canUpload={currentUser.role === 'Foreman' && usage.recordedByName === currentUser.fullName}/></article>)}{returns.map(item => <article key={`return-${item.id}`}><strong>{item.materialName} · {item.returnNumber}</strong><RecordEvidence sourceType="MaterialReturn" sourceId={item.id} canUpload={currentUser.role === 'Foreman' && item.returnedByName === currentUser.fullName}/>{item.receivedByName && <RecordEvidence sourceType="MaterialReturnReceipt" sourceId={item.id} canUpload={currentUser.role === 'Storekeeper' && item.receivedByName === currentUser.fullName}/>}</article>)}{closeouts.map(item => <article key={`closeout-${item.id}`}><strong>{item.materialName} · {item.closeoutNumber}</strong><RecordEvidence sourceType="MaterialCustodyCloseout" sourceId={item.id} canUpload={currentUser.role === 'Foreman' && item.submittedByName === currentUser.fullName}/></article>)}</div></details>}
-    {loading ? <Loading label="Loading custody records…"/> : <><section className="custody-close-register"><header><h2>Material issues</h2><span>{visibleIssues.length}</span></header>{visibleIssues.length ? visibleIssues.map(issue => { const remaining = issueRemaining(issue); const pendingReturn = returns.some(item => item.materialIssueId === issue.id && item.status === 'AwaitingReceipt'); const activeCloseout = closeouts.some(item => item.materialIssueId === issue.id && item.status !== 'Returned'); const difference = issue.quantityIssued - (issue.confirmedQuantity ?? issue.quantityIssued); return <article key={issue.id}><div><span>{issue.projectName}</span><strong>{issue.materialName}</strong><small>{issue.issuedToName} · {dateTime(issue.issuedAt)}</small></div><dl><div><dt>Issued</dt><dd>{number(issue.quantityIssued)}</dd></div><div><dt>Received</dt><dd>{issue.confirmedQuantity === null ? 'Waiting' : number(issue.confirmedQuantity)}</dd></div><div><dt>Difference</dt><dd>{number(difference)}</dd></div><div><dt>With team</dt><dd>{number(remaining)} {issue.materialUnit}</dd></div></dl><div className="custody-close-action">{currentUser.role === 'Supervisor' && issue.status === 'Disputed' ? <button className="lav-button primary" onClick={() => open({ kind: 'resolve-dispute', issue })}>Resolve difference</button> : currentUser.role === 'Foreman' && issue.status === 'Confirmed' ? <>{remaining > 0 && <button className="lav-button secondary" onClick={() => open({ kind: 'return', issue })}>Return</button>}{remaining === 0 && !pendingReturn && !activeCloseout && <button className="lav-button primary" onClick={() => open({ kind: 'closeout', issue })}>Submit close-out</button>}</> : <span>{issue.status === 'AwaitingConfirmation' ? `Waiting for ${issue.issuedToName} to confirm` : issue.status === 'Disputed' ? `Difference: ${number(difference)} ${issue.materialUnit}` : `Issued to ${issue.issuedToName}`}</span>}</div></article> }) : <Empty title="No material issue recorded"/>}</section><section className="position-register"><header className="section-register-title"><h2>Returns to Stores</h2><span>{returns.length}</span></header>{returns.map(item => <article className="lav-panel" key={item.id}><header><div><span>{item.projectName}</span><h2>{item.materialName}</h2><small>{item.returnNumber}</small></div><b className={`governance-status ${item.status.toLowerCase()}`}>{statusText('MaterialReturn', item.status)}</b></header><dl><div><dt>Offered</dt><dd>{number(item.quantityOffered)} {item.unit}</dd></div><div><dt>Condition</dt><dd>{item.condition}</dd></div><div><dt>Returned by</dt><dd>{item.returnedByName}</dd></div><div><dt>Received by</dt><dd>{item.receivedByName ?? 'Waiting'}</dd></div></dl>{currentUser.role === 'Storekeeper' && item.status === 'AwaitingReceipt' && <footer><button className="lav-button secondary" onClick={() => open({ kind: 'receive-return', item, accept: false })}>Reject</button><button className="lav-button primary" onClick={() => open({ kind: 'receive-return', item, accept: true })}>Receive</button></footer>}</article>)}</section><section className="position-register"><header className="section-register-title"><h2>Close-outs</h2><span>{closeouts.length}</span></header>{closeouts.map(item => <article className="lav-panel" key={item.id}><header><div><span>{item.projectName}</span><h2>{item.materialName}</h2><small>{item.closeoutNumber} · revision {item.revision}</small></div><b className={`governance-status ${item.status.toLowerCase()}`}>{statusText('CustodyCloseout', item.status)}</b></header><dl><div><dt>Confirmed</dt><dd>{number(item.confirmedQuantity)}</dd></div><div><dt>Used</dt><dd>{number(item.usedQuantity)}</dd></div><div><dt>Wasted</dt><dd>{number(item.wastedQuantity)}</dd></div><div><dt>Returned</dt><dd>{number(item.returnedQuantity)} {item.unit}</dd></div></dl>{currentUser.role === 'Supervisor' && item.status === 'AwaitingReview' && <footer><button className="lav-button secondary" onClick={() => open({ kind: 'review-closeout', item, approve: false })}>Return</button><button className="lav-button primary" onClick={() => open({ kind: 'review-closeout', item, approve: true })}>Approve</button></footer>}</article>)}</section></>}
-    {action && <div className="governance-dialog-wrap"><button className="governance-dialog-backdrop" aria-label="Close form" onClick={() => setAction(null)}/><form className="lav-panel governance-dialog" role="dialog" aria-modal="true" aria-labelledby="custody-action-title" onSubmit={event => void submitAction(event)}><header><h2 id="custody-action-title">{custodyActionTitle(action)}</h2><button type="button" aria-label="Close" onClick={() => setAction(null)}>×</button></header>{error && <Notice tone="error">{error}</Notice>}{action.kind === 'usage' && <label><span>Record type</span><select value={form.usageType} onChange={event => setForm({ ...form, usageType: event.currentTarget.value as 'Used' | 'Wastage' })}><option value="Used">Used</option><option value="Wastage">Wasted or damaged</option></select></label>}{(action.kind === 'usage' || action.kind === 'return') && <label><span>Quantity</span><input required type="number" min="0.001" step="0.001" value={form.quantity} onChange={event => setForm({ ...form, quantity: event.currentTarget.value })}/></label>}{action.kind === 'return' && <label><span>Condition</span><select value={form.condition} onChange={event => setForm({ ...form, condition: event.currentTarget.value })}><option>Good</option><option>Damaged</option><option>Mixed</option></select></label>}<label><span>{action.kind === 'usage' ? (form.usageType === 'Used' ? 'Work area or purpose' : 'Reason') : 'Notes'}</span><textarea required={action.kind === 'usage' || action.kind === 'receive-return' || action.kind === 'review-closeout' || action.kind === 'resolve-dispute'} minLength={3} rows={3} value={form.notes} onChange={event => setForm({ ...form, notes: event.currentTarget.value })}/></label>{action.kind !== 'review-closeout' && <EvidenceReferenceField label="Evidence reference" value={form.evidenceReference} onChange={value => setForm({ ...form, evidenceReference: value })}/>}<footer><button type="button" className="lav-button secondary" onClick={() => setAction(null)}>Cancel</button><button className="lav-button primary" disabled={busy || ((action.kind === 'receive-return' || action.kind === 'review-closeout' || action.kind === 'resolve-dispute') && form.notes.trim().length < 3)}>Confirm</button></footer></form></div>}
+    <header className="lav-page-head"><div><span className="lav-kicker">Material handovers</span><h1>Handover differences</h1></div><span className="lav-count-chip">{disputed.length} waiting</span></header>
+    {error && !resolving && <Notice tone="error">{error}</Notice>}{notice && <Notice tone="success">{notice}</Notice>}
+    {latestResolution && <section className="lav-panel governance-evidence-result"><div><strong>{latestResolution.materialName}</strong><span>{number(latestResolution.returnedToStoreQuantity)} {latestResolution.unit} returned to store · resolved by {latestResolution.resolvedByName}</span></div><RecordEvidence sourceType="MaterialIssueDisputeResolution" sourceId={latestResolution.id} kind="Photo" canUpload={canResolve && latestResolution.resolvedByName === currentUser.fullName}/></section>}
+    {loading ? <Loading label="Loading handovers…"/> : <section className="custody-close-register"><header><h2>Waiting for Supervisor</h2><span>{disputed.length}</span></header>{disputed.length ? disputed.map(issue => { const difference = issue.quantityIssued - (issue.confirmedQuantity ?? issue.quantityIssued); return <article key={issue.id}><div><span>{issue.projectName}</span><strong>{issue.materialName}</strong><small>{issue.issuedToName} · {dateTime(issue.issuedAt)}</small></div><dl><div><dt>Issued</dt><dd>{number(issue.quantityIssued)}</dd></div><div><dt>Received</dt><dd>{number(issue.confirmedQuantity ?? 0)}</dd></div><div><dt>Difference</dt><dd>{number(difference)} {issue.materialUnit}</dd></div><div><dt>Foreman&apos;s note</dt><dd>{issue.confirmationNotes || 'None'}</dd></div></dl><div className="custody-close-action">{canResolve ? <button className="lav-button primary" onClick={() => { setResolving(issue); setNotes(''); setEvidenceReference(''); setError(null) }}>Resolve difference</button> : <span>Waiting for Supervisor</span>}</div></article> }) : <Empty title="No handover differences" detail="When a Foreman receives less than was issued, it appears here for the Supervisor."/>}</section>}
+    {resolving && <div className="governance-dialog-wrap"><button className="governance-dialog-backdrop" aria-label="Close form" onClick={() => setResolving(null)}/><form className="lav-panel governance-dialog" role="dialog" aria-modal="true" aria-labelledby="handover-difference-title" onSubmit={event => void resolve(event)}><header><h2 id="handover-difference-title">Resolve handover difference</h2><button type="button" aria-label="Close" onClick={() => setResolving(null)}>×</button></header>{error && <Notice tone="error">{error}</Notice>}<p className="record-reference">{resolving.materialName}: the missing {number(resolving.quantityIssued - (resolving.confirmedQuantity ?? resolving.quantityIssued))} {resolving.materialUnit} go back to store stock and the handover is confirmed.</p><label><span>Notes</span><textarea required minLength={3} rows={3} value={notes} onChange={event => setNotes(event.currentTarget.value)}/></label><EvidenceReferenceField label="Evidence reference" value={evidenceReference} onChange={setEvidenceReference}/><footer><button type="button" className="lav-button secondary" onClick={() => setResolving(null)}>Cancel</button><button className="lav-button primary" disabled={busy || notes.trim().length < 3}>{busy ? 'Saving…' : 'Confirm'}</button></footer></form></div>}
   </div>
 }
 

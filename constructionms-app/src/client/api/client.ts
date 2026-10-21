@@ -923,7 +923,7 @@ export const inventoryApi = {
     request<MaterialIssue>('/inventory/issues', { method: 'POST', body, signal }),
   confirmIssue: (id: number, body: { receivedQuantity: number; notes?: string | null }, signal?: AbortSignal) =>
     request<MaterialIssue>(`/inventory/issues/${id}/confirm`, { method: 'POST', body, signal }),
-  recordUsage: (id: number, body: { usageType: 'Used' | 'Wastage'; quantity: number; purposeOrReason: string; evidenceReference?: string | null; idempotencyKey: string }, signal?: AbortSignal) =>
+  recordUsage: (id: number, body: { usageType: 'Used' | 'Wastage'; quantity: number; purposeOrReason: string | null; evidenceReference?: string | null; idempotencyKey: string }, signal?: AbortSignal) =>
     request<MaterialIssue>(`/inventory/issues/${id}/usage`, { method: 'POST', body, signal }),
   transfers: (signal?: AbortSignal, query: PageQuery = {}) => request<PaginatedResult<StockTransfer>>('/inventory/transfers', { signal }, pageQuery({ page: 1, pageSize: 100, ...query })),
   createTransfer: (body: { fromProjectId: number; toProjectId: number; materialId: number; quantity: number; reason: string }, signal?: AbortSignal) =>

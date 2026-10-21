@@ -350,63 +350,8 @@ function buildProgress(source: ProgressSource, related: Related, visibility: Pro
     }
   })
 
-  journey.add({ key: 'closeout', label: 'Material accounted for', role: 'Foreman' }, () => {
-    if (record === null || issue === null) return null
-    const { closeout } = record
-    const confirmed = dec(issue.confirmedQuantity)
-    const tally = `Used ${quantity(record.used)}, wasted ${quantity(record.wasted)}, returned ${quantity(record.returned)} of ${amount(confirmed)}`
-    if (closeout?.status === CustodyCloseoutStatuses.Approved) {
-      return {
-        kind: 'done',
-        at: closeout.decidedAt ?? closeout.submittedAt,
-        role: 'Supervisor',
-        reference: closeout.closeoutNumber,
-        actorName: name(closeout.decidedByUserId),
-        detail: tally,
-      }
-    }
-    if (closeout?.status === CustodyCloseoutStatuses.AwaitingReview) {
-      return {
-        kind: 'current',
-        headline: 'Close-out waiting for the Supervisor to review',
-        waitingOn: 'Supervisor',
-        since: closeout.submittedAt,
-        reference: closeout.closeoutNumber,
-        detail: tally,
-      }
-    }
-    if (record.pendingReturn !== null) {
-      return {
-        kind: 'current',
-        headline: `Return of ${amount(record.pendingReturn.quantity)} waiting for the Storekeeper`,
-        waitingOn: 'Storekeeper',
-        since: record.pendingReturn.since,
-        detail: tally,
-      }
-    }
-    if (closeout?.status === CustodyCloseoutStatuses.Returned) {
-      return {
-        kind: 'current',
-        headline: 'Close-out returned to the Foreman for correction',
-        waitingOn: 'Foreman',
-        since: closeout.decidedAt ?? closeout.submittedAt,
-        reference: closeout.closeoutNumber,
-        detail: visibility.notes ? closeout.decisionNotes : tally,
-      }
-    }
-    const remaining = confirmed.minus(record.used).minus(record.wasted).minus(record.returned)
-    return {
-      kind: 'current',
-      headline: remaining.lte(0)
-        ? 'Everything is recorded, waiting for the Foreman to submit the close-out'
-        : 'On site with the Foreman, use and returns are being recorded',
-      waitingOn: 'Foreman',
-      since: record.resolution?.resolvedAt ?? issue.confirmedAt ?? issue.issuedAt,
-      detail: tally,
-    }
-  })
-
-  return journey.finish('All material accounted for')
+  // Returns and custody close-outs are switched off for now: confirming receipt ends the journey.
+  return journey.finish('Received on site')
 }
 
 type StepInput = Pick<RequisitionProgressStepDto, 'key' | 'label' | 'role'>

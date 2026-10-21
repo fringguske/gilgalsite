@@ -7,13 +7,6 @@ const waitingLabels = {
     AwaitingVerification: 'Waiting for Supervisor',
     AwaitingApproval: 'Waiting for CEO',
   },
-  MaterialReturn: {
-    AwaitingReceipt: 'Waiting for Storekeeper',
-  },
-  CustodyCloseout: {
-    AwaitingReview: 'Waiting for Supervisor',
-    Returned: 'Returned to Foreman',
-  },
   OperationalPeriod: {
     AwaitingClose: 'Waiting for CEO',
   },

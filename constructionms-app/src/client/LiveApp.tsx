@@ -32,7 +32,7 @@ const LiveAuditView = lazy(() => import('./LiveOperationsViews').then(module => 
 const LiveCashBookView = lazy(() => import('./LiveOperationsViews').then(module => ({ default: module.LiveCashBookView })))
 const MyTasksView = lazy(() => import('./LiveGovernanceViews').then(module => ({ default: module.MyTasksView })))
 const OpeningPositionsView = lazy(() => import('./LiveGovernanceViews').then(module => ({ default: module.OpeningPositionsView })))
-const CustodyCloseoutView = lazy(() => import('./LiveGovernanceViews').then(module => ({ default: module.CustodyCloseoutView })))
+const HandoverDifferencesView = lazy(() => import('./LiveGovernanceViews').then(module => ({ default: module.HandoverDifferencesView })))
 const PeriodClosingView = lazy(() => import('./LiveGovernanceViews').then(module => ({ default: module.PeriodClosingView })))
 
 type NavItem = { to: string; label: string; glyph: string; activePaths?: readonly string[] }
@@ -46,7 +46,7 @@ const roleNavigation: Record<ConstructionRole, readonly NavItem[]> = {
   CEO: [
     { to: '/', label: 'Overview', glyph: 'OV' },
     { to: '/projects', label: 'Projects', glyph: 'PR' },
-    { to: '/inventory', label: 'Materials', glyph: 'MI', activePaths: ['/requisitions', '/sourcing', '/suppliers', '/purchase-orders', '/custody-close-out'] },
+    { to: '/inventory', label: 'Materials', glyph: 'MI', activePaths: ['/requisitions', '/sourcing', '/suppliers', '/purchase-orders'] },
     { to: '/finance', label: 'Money', glyph: 'MO', activePaths: ['/petty-cash'] },
     { to: '/tasks', label: 'My decisions', glyph: 'TK', activePaths: ['/opening-positions', '/period-close'] },
     { to: '/audit', label: 'Records & audit', glyph: 'AU' },
@@ -68,12 +68,12 @@ const roleNavigation: Record<ConstructionRole, readonly NavItem[]> = {
     { to: '/', label: 'Overview', glyph: 'OV' },
     { to: '/tasks', label: 'My work', glyph: 'TK' },
     { to: '/requisitions', label: 'Requests', glyph: 'MR' },
-    { to: '/inventory', label: 'My materials', glyph: 'MI', activePaths: ['/custody-close-out'] },
+    { to: '/inventory', label: 'My materials', glyph: 'MI' },
   ],
   Storekeeper: [
     { to: '/', label: 'Overview', glyph: 'OV' },
     { to: '/tasks', label: 'My work', glyph: 'TK' },
-    { to: '/inventory', label: 'Store', glyph: 'ST', activePaths: ['/purchase-orders', '/opening-positions', '/custody-close-out', '/period-close', '/requisitions'] },
+    { to: '/inventory', label: 'Store', glyph: 'ST', activePaths: ['/purchase-orders', '/opening-positions', '/period-close', '/requisitions'] },
   ],
   'Procurement Officer': [
     { to: '/', label: 'Overview', glyph: 'OV' },
@@ -93,7 +93,7 @@ const roleNavigation: Record<ConstructionRole, readonly NavItem[]> = {
   Auditor: [
     { to: '/', label: 'Overview', glyph: 'OV' },
     { to: '/projects', label: 'Projects', glyph: 'PR' },
-    { to: '/inventory', label: 'Materials', glyph: 'MI', activePaths: ['/requisitions', '/sourcing', '/suppliers', '/purchase-orders', '/custody-close-out'] },
+    { to: '/inventory', label: 'Materials', glyph: 'MI', activePaths: ['/requisitions', '/sourcing', '/suppliers', '/purchase-orders'] },
     { to: '/finance', label: 'Money', glyph: 'MO', activePaths: ['/petty-cash'] },
     { to: '/audit', label: 'Records', glyph: 'AU', activePaths: ['/opening-positions', '/period-close'] },
   ],
@@ -107,14 +107,12 @@ const additionalRoleRoutes: Partial<Record<ConstructionRole, readonly string[]>>
     '/suppliers',
     '/purchase-orders',
     '/opening-positions',
-    '/custody-close-out',
     '/petty-cash',
     '/period-close',
   ],
   Supervisor: ['/sourcing', '/purchase-orders', '/inventory', '/opening-positions', '/custody-close-out', '/period-close', '/petty-cash'],
   Engineer: ['/delivery-checks'],
-  Foreman: ['/custody-close-out'],
-  Storekeeper: ['/purchase-orders', '/opening-positions', '/custody-close-out', '/period-close', '/requisitions'],
+  Storekeeper: ['/purchase-orders', '/opening-positions', '/period-close', '/requisitions'],
   'Finance Officer': ['/purchase-orders', '/inventory', '/opening-positions', '/period-close'],
   Auditor: [
     '/requisitions',
@@ -122,7 +120,6 @@ const additionalRoleRoutes: Partial<Record<ConstructionRole, readonly string[]>>
     '/suppliers',
     '/purchase-orders',
     '/opening-positions',
-    '/custody-close-out',
     '/petty-cash',
     '/period-close',
   ],
@@ -133,14 +130,13 @@ type ContextSection = { paths: readonly string[]; label: string; links: readonly
 
 const roleContextSections: Partial<Record<ConstructionRole, readonly ContextSection[]>> = {
   CEO: [{
-    paths: ['/inventory', '/requisitions', '/sourcing', '/suppliers', '/purchase-orders', '/custody-close-out'],
+    paths: ['/inventory', '/requisitions', '/sourcing', '/suppliers', '/purchase-orders'],
     label: 'Materials',
     links: [
       { to: '/inventory', label: 'Current stock' },
       { to: '/requisitions', label: 'Requests' },
       { to: '/suppliers', label: 'Suppliers' },
       { to: '/purchase-orders', label: 'Orders' },
-      { to: '/custody-close-out', label: 'Custody' },
     ],
   }, {
     paths: ['/finance', '/petty-cash'],
@@ -170,7 +166,7 @@ const roleContextSections: Partial<Record<ConstructionRole, readonly ContextSect
       { to: '/inventory?section=stock', label: 'Current stock' },
       { to: '/inventory?section=movements', label: 'Movements' },
       { to: '/opening-positions', label: 'Opening stock' },
-      { to: '/custody-close-out', label: 'Custody' },
+      { to: '/custody-close-out', label: 'Handover differences' },
       { to: '/period-close', label: 'Period close' },
     ],
   }, {
@@ -190,16 +186,8 @@ const roleContextSections: Partial<Record<ConstructionRole, readonly ContextSect
       { to: '/delivery-checks', label: 'Delivered materials' },
     ],
   }],
-  Foreman: [{
-    paths: ['/inventory', '/custody-close-out'],
-    label: 'My materials',
-    links: [
-      { to: '/inventory', label: 'With me' },
-      { to: '/custody-close-out', label: 'Returns and close-out' },
-    ],
-  }],
   Storekeeper: [{
-    paths: ['/inventory', '/purchase-orders', '/opening-positions', '/custody-close-out', '/period-close', '/requisitions'],
+    paths: ['/inventory', '/purchase-orders', '/opening-positions', '/period-close', '/requisitions'],
     label: 'Store',
     links: [
       { to: '/inventory', label: 'Operations' },
@@ -208,7 +196,6 @@ const roleContextSections: Partial<Record<ConstructionRole, readonly ContextSect
       { to: '/purchase-orders', label: 'Expected deliveries' },
       { to: '/requisitions', label: 'Request tracker' },
       { to: '/opening-positions', label: 'Opening stock' },
-      { to: '/custody-close-out', label: 'Returns' },
       { to: '/period-close', label: 'Corrections' },
     ],
   }],
@@ -244,14 +231,13 @@ const roleContextSections: Partial<Record<ConstructionRole, readonly ContextSect
     ],
   }],
   Auditor: [{
-    paths: ['/inventory', '/requisitions', '/sourcing', '/suppliers', '/purchase-orders', '/custody-close-out'],
+    paths: ['/inventory', '/requisitions', '/sourcing', '/suppliers', '/purchase-orders'],
     label: 'Materials',
     links: [
       { to: '/inventory', label: 'Stock' },
       { to: '/requisitions', label: 'Requests' },
       { to: '/suppliers', label: 'Suppliers' },
       { to: '/purchase-orders', label: 'Orders' },
-      { to: '/custody-close-out', label: 'Custody' },
     ],
   }, {
     paths: ['/finance', '/petty-cash'],
@@ -584,7 +570,7 @@ function Shell({ currentUser, onLogout, onRoleChanged, onUserChanged, onCredenti
         <Route path="/petty-cash" element={canAccess('/petty-cash') ? <LivePettyCashView currentUser={currentUser}/> : <AccessRestricted role={currentUser.role}/>}/>
         <Route path="/cash-book" element={canAccess('/cash-book') ? <LiveCashBookView/> : <AccessRestricted role={currentUser.role}/>}/>
         <Route path="/opening-positions" element={canAccess('/opening-positions') ? <OpeningPositionsView currentUser={currentUser}/> : <AccessRestricted role={currentUser.role}/>}/>
-        <Route path="/custody-close-out" element={canAccess('/custody-close-out') ? <CustodyCloseoutView currentUser={currentUser}/> : <AccessRestricted role={currentUser.role}/>}/>
+        <Route path="/custody-close-out" element={canAccess('/custody-close-out') ? <HandoverDifferencesView currentUser={currentUser}/> : <AccessRestricted role={currentUser.role}/>}/>
         <Route path="/period-close" element={canAccess('/period-close') ? <PeriodClosingView currentUser={currentUser}/> : <AccessRestricted role={currentUser.role}/>}/>
         <Route path="/audit" element={canAccess('/audit') ? <LiveAuditView/> : <AccessRestricted role={currentUser.role}/>}/>
         <Route path="*" element={<Navigate to="/" replace/>}/>
