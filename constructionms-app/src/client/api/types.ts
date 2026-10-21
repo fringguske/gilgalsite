@@ -249,42 +249,15 @@ export interface SupplierSummary {
   createdAt: IsoDateTime
 }
 
-export type SupplierOnboardingStatus = 'Pending' | 'Approved' | 'Rejected'
-
-export interface SupplierOnboardingRequest {
-  id: number
-  requestNumber: string
-  name: string
-  contactPerson: string
-  phoneNumber: string
-  email: string | null
-  kraPin: string
-  mpesaNumber: string | null
-  category: string
-  status: SupplierOnboardingStatus
-  submittedByUserId: number
-  submittedByName: string
-  submittedAt: IsoDateTime
-  reviewedByUserId: number | null
-  reviewedByName: string | null
-  reviewedAt: IsoDateTime | null
-  reviewNotes: string | null
-  approvedSupplierId: number | null
-}
-
-export interface CreateSupplierOnboardingRequest {
+/** Adds a supplier straight to the register; no approval step. */
+export interface CreateSupplierRequest {
   name: string
   contactPerson: string
   phoneNumber: string
   email?: string | null
-  kraPin: string
+  kraPin?: string | null
   mpesaNumber?: string | null
   category: string
-}
-
-export interface ReviewSupplierOnboardingRequest {
-  approve: boolean
-  notes: string
 }
 
 export interface Supplier extends SupplierSummary {

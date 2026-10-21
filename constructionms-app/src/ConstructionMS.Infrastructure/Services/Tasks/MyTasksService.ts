@@ -29,7 +29,6 @@ import {
 } from '@/ConstructionMS.Domain/Entities/PurchaseOrderWorkflowStates'
 import { RequisitionTypes } from '@/ConstructionMS.Domain/Entities/Requisition'
 import { RequisitionWorkflowStates } from '@/ConstructionMS.Domain/Entities/RequisitionWorkflowStates'
-import { SupplierOnboardingStatuses } from '@/ConstructionMS.Domain/Entities/SupplierOnboardingRequest'
 import { PurchaseOrderInvariant } from '../../Common/PurchaseOrderInvariant'
 import { compareOrdinalStrings } from '../../Common/StringComparison'
 import type { AppDbContext } from '../../Data/AppDbContext'
@@ -65,7 +64,6 @@ import {
   stockLedgerEntries,
   stockTransfers,
   supplierInvoices,
-  supplierOnboardingRequests,
   supplierQuotes,
   suppliers,
   userProjectAssignments,
@@ -1048,23 +1046,6 @@ export class MyTasksService implements IMyTasksService {
   }
 
   private async addFinanceTasksAsync(tasks: MyTaskResponseDto[], projectIds: number[]): Promise<void> {
-    const supplierRequests = await this.db
-      .select({
-        id: supplierOnboardingRequests.id,
-        name: supplierOnboardingRequests.name,
-        requestNumber: supplierOnboardingRequests.requestNumber,
-        submittedAt: supplierOnboardingRequests.submittedAt,
-      })
-      .from(supplierOnboardingRequests)
-      .where(eq(supplierOnboardingRequests.status, SupplierOnboardingStatuses.Pending))
-    for (const item of supplierRequests) {
-      this.add(tasks, {
-        key: `supplier-onboarding:${item.id}`, type: 'SupplierOnboardingReview', title: 'Review supplier application',
-        detail: `${item.name} · ${item.requestNumber}`, requiredRole: 'Finance Officer', projectId: null, projectName: null,
-        sourceType: 'SupplierOnboardingRequest', sourceId: item.id, targetPath: '/suppliers', openedAt: item.submittedAt,
-      })
-    }
-
     const invoices = await this.db
       .select({
         id: supplierInvoices.id,

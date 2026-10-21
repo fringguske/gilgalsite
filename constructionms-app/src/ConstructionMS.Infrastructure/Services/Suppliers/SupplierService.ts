@@ -1,15 +1,14 @@
 import { and, asc, count, eq, ne } from 'drizzle-orm'
-import { InvalidOperationError } from '@/ConstructionMS.Application/Common/Exceptions'
+import { ArgumentError, InvalidOperationError } from '@/ConstructionMS.Application/Common/Exceptions'
 import { Pagination } from '@/ConstructionMS.Application/Common/Pagination'
 import { createPaginatedResult, type PaginatedResult } from '@/ConstructionMS.Application/Common/PaginatedResult'
 import type { CreateSupplierRequestDto } from '@/ConstructionMS.Application/DTOs/Suppliers/CreateSupplierRequestDto'
 import type { SupplierResponseDto } from '@/ConstructionMS.Application/DTOs/Suppliers/SupplierResponseDto'
 import type { UpdateSupplierRequestDto } from '@/ConstructionMS.Application/DTOs/Suppliers/UpdateSupplierRequestDto'
 import type { ISupplierService } from '@/ConstructionMS.Application/Services/Suppliers/ISupplierService'
-import { SupplierOnboardingStatuses } from '@/ConstructionMS.Domain/Entities/SupplierOnboardingRequest'
 import { InputNormalizer } from '../../Common/InputNormalizer'
 import { IsolationLevel, type AppDbContext } from '../../Data/AppDbContext'
-import { supplierOnboardingRequests, suppliers } from '../../Data/schema'
+import { suppliers } from '../../Data/schema'
 
 type Supplier = typeof suppliers.$inferSelect
 
@@ -46,32 +45,24 @@ export class SupplierService implements ISupplierService {
     const contactPerson = InputNormalizer.requiredText(dto.contactPerson, 'ContactPerson', 2, 150)
     const phoneNumber = InputNormalizer.requiredText(dto.phoneNumber, 'PhoneNumber', 7, 30)
     const email = InputNormalizer.optionalEmail(dto.email, 'Email')
-    const kraPin = InputNormalizer.requiredText(dto.kraPin, 'KraPin', 5, 20).toUpperCase()
+    const kraPin = InputNormalizer.optionalUppercase(dto.kraPin, 'KraPin', 20)
+    if (kraPin !== null && kraPin.length < 5) {
+      throw new ArgumentError('A KRA PIN must be at least 5 characters, or left empty.', 'KraPin')
+    }
     const mpesaNumber = InputNormalizer.optionalText(dto.mpesaNumber, 'MpesaNumber', 30)
     const category = InputNormalizer.requiredText(dto.category, 'Category', 2, 100)
 
     const created = await this.db.transaction(async (tx) => {
-      const [existing] = await tx
-        .select({ id: suppliers.id })
-        .from(suppliers)
-        .where(eq(suppliers.normalizedKraPin, kraPin))
-        .limit(1)
-      if (existing) {
-        throw new InvalidOperationError('A supplier with that KRA PIN already exists.')
-      }
-
-      // Applications sent before suppliers could be added directly can still be decided;
-      // adding the same company again would leave that application impossible to approve.
-      const [pending] = await tx
-        .select({ id: supplierOnboardingRequests.id })
-        .from(supplierOnboardingRequests)
-        .where(and(
-          eq(supplierOnboardingRequests.status, SupplierOnboardingStatuses.Pending),
-          eq(supplierOnboardingRequests.normalizedKraPin, kraPin)))
-        .limit(1)
-      if (pending) {
-        throw new InvalidOperationError(
-          'That KRA PIN has an earlier supplier application waiting for a Finance Officer or the CEO. Approve or reject it under Earlier applications.')
+      // Several suppliers may have no KRA PIN; a PIN that is given must be unique.
+      if (kraPin !== null) {
+        const [existing] = await tx
+          .select({ id: suppliers.id })
+          .from(suppliers)
+          .where(eq(suppliers.normalizedKraPin, kraPin))
+          .limit(1)
+        if (existing) {
+          throw new InvalidOperationError('A supplier with that KRA PIN already exists.')
+        }
       }
 
       const [supplier] = await tx

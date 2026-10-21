@@ -15,7 +15,6 @@ import type {
   CreateRequisitionRequest,
   CreateSourcingRoundRequest,
   CreateStockReplenishmentRequest,
-  CreateSupplierOnboardingRequest,
   CurrentUser,
   DashboardResponse,
   LoginRequest,
@@ -41,9 +40,8 @@ import type {
   SetProjectBudgetRequest,
   SourcingRound,
   SourcingRoundListQuery,
+  CreateSupplierRequest,
   Supplier,
-  SupplierOnboardingRequest,
-  SupplierOnboardingStatus,
   SupplierQuote,
   SupplierSummary,
   SupervisorDecisionRequest,
@@ -57,7 +55,6 @@ import type {
   UpdateRequisitionRequest,
   UpdateMaterialRequest,
   UpdateSupplierRequest,
-  ReviewSupplierOnboardingRequest,
   ReviewMaterialCatalogRequest,
   UserAccount,
   WorkflowReasonRequest,
@@ -605,7 +602,7 @@ export const suppliersApi = {
   get: (supplierId: number, signal?: AbortSignal) =>
     request<Supplier>(`/suppliers/${supplierId}`, { signal }),
 
-  create: (payload: CreateSupplierOnboardingRequest, signal?: AbortSignal) =>
+  create: (payload: CreateSupplierRequest, signal?: AbortSignal) =>
     request<Supplier>('/suppliers', {
       method: 'POST',
       body: payload,
@@ -623,36 +620,6 @@ export const suppliersApi = {
     request<Supplier>(`/suppliers/${supplierId}/blacklist`, {
       method: 'PATCH',
       body: { isBlacklisted },
-      signal,
-    }),
-}
-
-export const supplierOnboardingApi = {
-  list: (
-    query: PageQuery & { status?: SupplierOnboardingStatus } = {},
-    signal?: AbortSignal,
-  ) =>
-    request<PaginatedResult<SupplierOnboardingRequest>>(
-      '/supplier-onboarding',
-      { signal },
-      { ...pageQuery(query), status: query.status },
-    ),
-
-  submit: (payload: CreateSupplierOnboardingRequest, signal?: AbortSignal) =>
-    request<SupplierOnboardingRequest>('/supplier-onboarding', {
-      method: 'POST',
-      body: payload,
-      signal,
-    }),
-
-  review: (
-    requestId: number,
-    payload: ReviewSupplierOnboardingRequest,
-    signal?: AbortSignal,
-  ) =>
-    request<SupplierOnboardingRequest>(`/supplier-onboarding/${requestId}/decision`, {
-      method: 'POST',
-      body: payload,
       signal,
     }),
 }

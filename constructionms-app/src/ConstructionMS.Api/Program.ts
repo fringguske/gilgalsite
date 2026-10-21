@@ -17,7 +17,6 @@ import { ProjectService } from '@/ConstructionMS.Infrastructure/Services/Project
 import { MaterialService } from '@/ConstructionMS.Infrastructure/Services/Materials/MaterialService'
 import { MaterialCatalogRequestService } from '@/ConstructionMS.Infrastructure/Services/Materials/MaterialCatalogRequestService'
 import { SupplierService } from '@/ConstructionMS.Infrastructure/Services/Suppliers/SupplierService'
-import { SupplierOnboardingService } from '@/ConstructionMS.Infrastructure/Services/Suppliers/SupplierOnboardingService'
 import { RequisitionWorkflowService } from '@/ConstructionMS.Infrastructure/Services/Requisitions/RequisitionWorkflowService'
 import { SourcingService } from '@/ConstructionMS.Infrastructure/Services/PurchaseOrders/SourcingService'
 import { PurchaseOrderService } from '@/ConstructionMS.Infrastructure/Services/PurchaseOrders/PurchaseOrderService'
@@ -98,9 +97,6 @@ export class ServiceScope {
     return this.once('materialCatalogRequests', () => new MaterialCatalogRequestService(this.db, this.actorRoleResolver))
   }
   get supplierService() { return this.once('suppliers', () => new SupplierService(this.db)) }
-  get supplierOnboardingService() {
-    return this.once('supplierOnboarding', () => new SupplierOnboardingService(this.db, this.actorRoleResolver))
-  }
   get requisitionWorkflowService() {
     return this.once('requisitions', () => new RequisitionWorkflowService(this.db, this.actorRoleResolver))
   }

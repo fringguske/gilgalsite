@@ -21,7 +21,6 @@ import { ProjectsController } from './Controllers/ProjectsController'
 import { PurchaseOrdersController } from './Controllers/PurchaseOrdersController'
 import { RolesController } from './Controllers/RolesController'
 import { SourcingRoundsController } from './Controllers/SourcingRoundsController'
-import { SupplierOnboardingController } from './Controllers/SupplierOnboardingController'
 import { SuppliersController } from './Controllers/SuppliersController'
 import { UserProjectAssignmentsController } from './Controllers/UserProjectAssignmentsController'
 import { UsersController } from './Controllers/UsersController'
@@ -36,7 +35,7 @@ const controllers: readonly AnyController[] = [
   EvidenceController, FinanceController, InventoryController, MaterialCatalogRequestsController,
   MaterialsController, MyTasksController, NotificationsController, PettyCashController,
   ProjectsController, PurchaseOrdersController, RolesController, SourcingRoundsController,
-  SupplierOnboardingController, SuppliersController, UserProjectAssignmentsController,
+  SuppliersController, UserProjectAssignmentsController,
   UsersController, RequisitionsController,
 ]
 

@@ -21,7 +21,6 @@ export {
   requisitionsApi,
   rolesApi,
   sourcingRoundsApi,
-  supplierOnboardingApi,
   suppliersApi,
   usersApi,
 } from './client'
