@@ -7,6 +7,7 @@ import { Pagination } from '@/ConstructionMS.Application/Common/Pagination'
 import { createPaginatedResult, type PaginatedResult } from '@/ConstructionMS.Application/Common/PaginatedResult'
 import type { CreateRequisitionV1RequestDto } from '@/ConstructionMS.Application/DTOs/Requisitions/V1/CreateRequisitionV1RequestDto'
 import type { CreateStockReplenishmentRequestDto } from '@/ConstructionMS.Application/DTOs/Requisitions/V1/CreateStockReplenishmentRequestDto'
+import type { RequisitionProgressDto } from '@/ConstructionMS.Application/DTOs/Requisitions/V1/RequisitionProgressDto'
 import type { RequisitionWorkflowResponseDto } from '@/ConstructionMS.Application/DTOs/Requisitions/V1/RequisitionWorkflowResponseDto'
 import type { SupervisorDecisionRequestDto } from '@/ConstructionMS.Application/DTOs/Requisitions/V1/SupervisorDecisionRequestDto'
 import type { TechnicalCheckRequestDto } from '@/ConstructionMS.Application/DTOs/Requisitions/V1/TechnicalCheckRequestDto'
@@ -29,6 +30,7 @@ import {
   users,
 } from '../../Data/schema'
 import { toRoundTripString } from '../ControlEventWriter'
+import { loadRequisitionProgressAsync, type ProgressVisibility } from './RequisitionProgressReader'
 
 type RequisitionRow = typeof requisitions.$inferSelect
 
@@ -158,9 +160,10 @@ export class RequisitionWorkflowService implements IRequisitionWorkflowService {
       offset: pagination.offset,
       limit: pagination.pageSize,
     })
+    const progress = await loadRequisitionProgressAsync(this.db, rows, progressVisibility(actor.role))
 
     return OperationResult.success(createPaginatedResult({
-      items: rows.map(row => toDto(row, actor.role)),
+      items: rows.map(row => toDto(row, actor.role, progress.get(row.requisition.id)!)),
       totalCount,
       page: pagination.page,
       pageSize: pagination.pageSize,
@@ -184,7 +187,7 @@ export class RequisitionWorkflowService implements IRequisitionWorkflowService {
 
     return requisition === undefined
       ? failure(OperationErrorKind.NotFound, 'The requisition was not found in your assigned projects.')
-      : OperationResult.success(toDto(requisition, actor.role))
+      : OperationResult.success(toDto(requisition, actor.role, await this.loadProgressAsync(requisition, actor.role)))
   }
 
   async createAsync(
@@ -788,7 +791,12 @@ export class RequisitionWorkflowService implements IRequisitionWorkflowService {
     const [requisition] = await loadRequisitionsAsync(this.db, eq(requisitions.id, requisitionId), { limit: 1 })
     return requisition === undefined
       ? failure(OperationErrorKind.NotFound, 'The saved requisition could not be reloaded.')
-      : OperationResult.success(toDto(requisition, actor.role))
+      : OperationResult.success(toDto(requisition, actor.role, await this.loadProgressAsync(requisition, actor.role)))
+  }
+
+  private async loadProgressAsync(requisition: LoadedRequisition, actorRole: string): Promise<RequisitionProgressDto> {
+    const progress = await loadRequisitionProgressAsync(this.db, [requisition], progressVisibility(actorRole))
+    return progress.get(requisition.requisition.id)!
   }
 
   private async getLatestEventHashAsync(requisitionId: number): Promise<string | null> {
@@ -1004,7 +1012,19 @@ function canReadFullHistory(role: string): boolean {
   return role === CeoRole || role === AuditorRole
 }
 
-function toDto(loaded: LoadedRequisition, actorRole: string): RequisitionWorkflowResponseDto {
+/** Names follow the approval-history rule; reasons follow the technical-details rule in toDto. */
+function progressVisibility(role: string): ProgressVisibility {
+  return {
+    names: canReadFullHistory(role),
+    notes: canReadFullHistory(role) || role === ForemanRole || role === EngineerRole || role === SupervisorRole,
+  }
+}
+
+function toDto(
+  loaded: LoadedRequisition,
+  actorRole: string,
+  progress: RequisitionProgressDto,
+): RequisitionWorkflowResponseDto {
   const { requisition } = loaded
   const latestCheck = loaded.technicalChecks.reduce<LoadedRequisition['technicalChecks'][number] | null>(
     (latest, check) => (latest === null || check.id > latest.id ? check : latest), null)
@@ -1064,6 +1084,7 @@ function toDto(loaded: LoadedRequisition, actorRole: string): RequisitionWorkflo
           eventHash: event.eventHash,
         }))
       : [],
+    progress,
   }
 }
 

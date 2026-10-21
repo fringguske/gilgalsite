@@ -441,6 +441,31 @@ export interface RequisitionWorkflowEvent {
   eventHash: string
 }
 
+export type RequisitionProgressState = 'InProgress' | 'Completed' | 'Stopped'
+export type RequisitionProgressStepStatus = 'Done' | 'Current' | 'Upcoming' | 'Stopped'
+
+export interface RequisitionProgressStep {
+  key: string
+  label: string
+  status: RequisitionProgressStepStatus
+  role: string
+  detail: string | null
+  reference: string | null
+  actorName: string | null
+  at: IsoDateTime | null
+  /** Quote deadline or expected delivery: an ISO date or date-time. */
+  expectedBy: string | null
+}
+
+/** Where a request has reached, from approval through buying, delivery, issue and close-out. */
+export interface RequisitionProgress {
+  state: RequisitionProgressState
+  headline: string
+  waitingOn: string | null
+  since: IsoDateTime
+  steps: RequisitionProgressStep[]
+}
+
 export interface Requisition {
   id: number
   projectId: number
@@ -468,6 +493,7 @@ export interface Requisition {
   decidedByUserName: string | null
   currentActionMessage: string | null
   history: RequisitionWorkflowEvent[]
+  progress: RequisitionProgress
 }
 
 export interface RequisitionListQuery extends PageQuery {

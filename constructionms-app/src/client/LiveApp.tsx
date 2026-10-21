@@ -73,12 +73,12 @@ const roleNavigation: Record<ConstructionRole, readonly NavItem[]> = {
   Storekeeper: [
     { to: '/', label: 'Overview', glyph: 'OV' },
     { to: '/tasks', label: 'My work', glyph: 'TK' },
-    { to: '/inventory', label: 'Store', glyph: 'ST', activePaths: ['/purchase-orders', '/opening-positions', '/custody-close-out', '/period-close'] },
+    { to: '/inventory', label: 'Store', glyph: 'ST', activePaths: ['/purchase-orders', '/opening-positions', '/custody-close-out', '/period-close', '/requisitions'] },
   ],
   'Procurement Officer': [
     { to: '/', label: 'Overview', glyph: 'OV' },
     { to: '/tasks', label: 'My work', glyph: 'TK' },
-    { to: '/sourcing', label: 'Buying', glyph: 'SO', activePaths: ['/purchase-orders', '/suppliers'] },
+    { to: '/sourcing', label: 'Buying', glyph: 'SO', activePaths: ['/purchase-orders', '/suppliers', '/requisitions'] },
     { to: '/finance', label: 'Supplier invoices', glyph: 'IN' },
   ],
   'Finance Officer': [
@@ -100,7 +100,7 @@ const roleNavigation: Record<ConstructionRole, readonly NavItem[]> = {
 }
 
 const additionalRoleRoutes: Partial<Record<ConstructionRole, readonly string[]>> = {
-  'Procurement Officer': ['/purchase-orders', '/suppliers'],
+  'Procurement Officer': ['/purchase-orders', '/suppliers', '/requisitions'],
   CEO: [
     '/requisitions',
     '/sourcing',
@@ -114,7 +114,7 @@ const additionalRoleRoutes: Partial<Record<ConstructionRole, readonly string[]>>
   Supervisor: ['/sourcing', '/purchase-orders', '/inventory', '/opening-positions', '/custody-close-out', '/period-close', '/petty-cash'],
   Engineer: ['/delivery-checks'],
   Foreman: ['/custody-close-out'],
-  Storekeeper: ['/purchase-orders', '/opening-positions', '/custody-close-out', '/period-close'],
+  Storekeeper: ['/purchase-orders', '/opening-positions', '/custody-close-out', '/period-close', '/requisitions'],
   'Finance Officer': ['/purchase-orders', '/inventory', '/opening-positions', '/period-close'],
   Auditor: [
     '/requisitions',
@@ -201,13 +201,14 @@ const roleContextSections: Partial<Record<ConstructionRole, readonly ContextSect
     ],
   }],
   Storekeeper: [{
-    paths: ['/inventory', '/purchase-orders', '/opening-positions', '/custody-close-out', '/period-close'],
+    paths: ['/inventory', '/purchase-orders', '/opening-positions', '/custody-close-out', '/period-close', '/requisitions'],
     label: 'Store',
     links: [
       { to: '/inventory', label: 'Operations' },
       { to: '/inventory?section=stock', label: 'Current stock' },
       { to: '/inventory?section=movements', label: 'Movements' },
       { to: '/purchase-orders', label: 'Expected deliveries' },
+      { to: '/requisitions', label: 'Request tracker' },
       { to: '/opening-positions', label: 'Opening stock' },
       { to: '/custody-close-out', label: 'Returns' },
       { to: '/period-close', label: 'Corrections' },
@@ -234,13 +235,14 @@ const roleContextSections: Partial<Record<ConstructionRole, readonly ContextSect
     ],
   }],
   'Procurement Officer': [{
-    paths: ['/sourcing', '/purchase-orders', '/suppliers'],
+    paths: ['/sourcing', '/purchase-orders', '/suppliers', '/requisitions'],
     label: 'Buying',
     links: [
       { to: '/sourcing', label: 'Ready requests' },
       { to: '/sourcing?section=open', label: 'Sourcing' },
       { to: '/sourcing?section=catalog', label: 'Material catalog' },
       { to: '/purchase-orders', label: 'Purchase orders' },
+      { to: '/requisitions', label: 'Request tracker' },
       { to: '/suppliers', label: 'Suppliers' },
     ],
   }],

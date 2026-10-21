@@ -1,3 +1,5 @@
+import type { RequisitionProgressDto } from './RequisitionProgressDto'
+
 /** Role-scoped view of a material requisition and its current workflow position. */
 export interface RequisitionWorkflowResponseDto {
   id: number
@@ -30,6 +32,8 @@ export interface RequisitionWorkflowResponseDto {
    * roles receive the current state and the evidence required for their own step.
    */
   history: RequisitionWorkflowEventResponseDto[]
+  /** The whole journey for every reader; actor names and reasons follow the same role rules as above. */
+  progress: RequisitionProgressDto
 }
 
 export interface TechnicalCheckResponseDto {

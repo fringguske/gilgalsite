@@ -31,6 +31,7 @@ import { EvidenceFiles } from './EvidenceReferenceField'
 import { CeoOverview } from './CeoOverview'
 import { OperationalOverview } from './OperationalOverview'
 import { PendingVerification } from './pendingVerification'
+import { RequestProgress } from './RequestProgress'
 import './live-api.css'
 import './ceo-overview.css'
 
@@ -1575,26 +1576,31 @@ export function LiveRequisitionsView({ currentUser }: LiveRequisitionsViewProps)
     if (currentUser.role === 'Supervisor') return requisition.status === 'AwaitingSupervisorDecision' || requisition.status === 'AwaitingTechnicalCheck'
     return false
   }
-  const hasSimpleQueue = ['Foreman', 'Engineer', 'Supervisor'].includes(currentUser.role)
+  // Stores and Procurement act on requests from their own pages; here they only follow them.
+  const trackingOnly = currentUser.role === 'Storekeeper' || currentUser.role === 'Procurement Officer'
+  const hasSimpleQueue = ['Foreman', 'Engineer', 'Supervisor'].includes(currentUser.role) || trackingOnly
   const requestedQueue = searchParams.get('view')
-  const queueView = requestedQueue === 'action' || requestedQueue === 'moving' || requestedQueue === 'finished'
+  const queueView = (requestedQueue === 'action' && !trackingOnly) || requestedQueue === 'moving' || requestedQueue === 'finished'
     ? requestedQueue
-    : currentUser.role === 'Foreman' ? 'moving' : 'action'
+    : currentUser.role === 'Foreman' || trackingOnly ? 'moving' : 'action'
   const filteredRequisitions = requisitions.filter(requisition => {
     if (projectFilter && requisition.projectId !== Number(projectFilter)) return false
     if (!hasSimpleQueue) return true
     if (queueView === 'action') return needsCurrentRole(requisition)
-    const finished = requisition.status === 'Approved' || requisition.status === 'Rejected'
+    // Approval is not the end: a request is finished once delivered and accounted for, or rejected.
+    const finished = requisition.progress.state !== 'InProgress'
     return queueView === 'finished' ? finished : !finished
   })
   const queueCount = requisitions.filter(needsCurrentRole).length
   const pageTitle = currentUser.role === 'Foreman'
     ? 'Material requests'
-    : currentUser.role === 'Engineer'
-      ? 'Material checks'
-      : currentUser.role === 'Supervisor'
-        ? 'Material approvals'
-        : 'Requisitions'
+    : trackingOnly
+      ? 'Track material requests'
+      : currentUser.role === 'Engineer'
+        ? 'Material checks'
+        : currentUser.role === 'Supervisor'
+          ? 'Material approvals'
+          : 'Requisitions'
 
   function upsertRequisition(next: Requisition) {
     setRequisitions((current) => {
@@ -1666,7 +1672,7 @@ export function LiveRequisitionsView({ currentUser }: LiveRequisitionsViewProps)
           )}
 
           {hasSimpleQueue && <nav className="ops-action-nav requisition-section-nav" aria-label="Material request sections">
-            <button type="button" className={queueView === 'action' ? 'active' : ''} aria-current={queueView === 'action' ? 'page' : undefined} onClick={() => setSearchParams({ view: 'action' }, { replace: true })}>Needs action</button>
+            {!trackingOnly && <button type="button" className={queueView === 'action' ? 'active' : ''} aria-current={queueView === 'action' ? 'page' : undefined} onClick={() => setSearchParams({ view: 'action' }, { replace: true })}>Needs action</button>}
             <button type="button" className={queueView === 'moving' ? 'active' : ''} aria-current={queueView === 'moving' ? 'page' : undefined} onClick={() => setSearchParams({ view: 'moving' }, { replace: true })}>In progress</button>
             <button type="button" className={queueView === 'finished' ? 'active' : ''} aria-current={queueView === 'finished' ? 'page' : undefined} onClick={() => setSearchParams({ view: 'finished' }, { replace: true })}>Finished</button>
           </nav>}
@@ -2106,6 +2112,8 @@ function RequisitionCard({
         </div>
         <div><span>Request for</span><strong>{requisition.requestType === 'StockReplenishment' ? 'Store stock' : 'Site use'}</strong></div>
       </div>
+
+      <RequestProgress progress={requisition.progress} />
 
       {requisition.latestTechnicalCheck?.comments && (
         <div className="lav-review-note">
