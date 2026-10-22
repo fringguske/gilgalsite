@@ -911,7 +911,7 @@ function PettyCashCard({ item, currentUser, run }: { item: PettyCashRequest; cur
   return <article className="petty-cash-card">
     <header><div><span>{item.projectName}</span><small className="petty-cash-purpose-label">Purpose</small><h3>{item.purpose}</h3><small>{item.costCode} · requested by {item.requestedByName}</small></div><b className={`ops-status ${item.status.toLowerCase()}`}>{statusText('PettyCash', item.status)}</b></header>
     <div className="petty-cash-facts"><span>Requested<strong>{money(item.amountRequested)}</strong></span><span>Approved<strong>{item.amountApproved ? money(item.amountApproved) : 'Waiting'}</strong></span><span>Needed<strong>{new Intl.DateTimeFormat('en-KE', { day: 'numeric', month: 'short', year: 'numeric' }).format(new Date(`${item.neededByDate}T00:00:00`))}</strong></span><span>Evidence<strong>{item.latestReconciliation?.evidenceReference ?? item.disbursement?.evidenceReference ?? 'Waiting'}</strong></span></div>
-    {item.disbursement && <p className="petty-cash-proof">Handed to {item.disbursement.recipientName}: {money(item.disbursement.amount)} by {item.disbursement.method} · {item.disbursement.externalReference}</p>}
+    {item.disbursement && <p className="petty-cash-proof">Handed to {item.disbursement.recipientName}: {money(item.disbursement.amount)} by {item.disbursement.method}{item.disbursement.externalReference !== item.disbursement.disbursementNumber.toUpperCase() && ` · ${item.disbursement.externalReference}`}</p>}
     {item.receiptConfirmation && <p className="petty-cash-proof">Receipt confirmed by {item.receiptConfirmation.confirmedByName} · {when(item.receiptConfirmation.confirmedAt)}</p>}
     {item.latestReconciliation && <p className="petty-cash-proof">Accounted: {money(item.latestReconciliation.amountSpent)} spent + {money(item.latestReconciliation.amountReturned)} returned · {item.latestReconciliation.status}</p>}
     {(item.disbursement || item.latestReconciliation) && <div className="petty-cash-evidence">
@@ -944,7 +944,7 @@ function PettyCashDecision({ item, close, run }: { item: PettyCashRequest; close
 }
 
 function PettyCashDisbursementForm({ item, close, run }: { item: PettyCashRequest; close: () => void; run: (action: () => Promise<unknown>, text: string) => Promise<boolean> }) {
-  const [form, setForm] = useState({ method: 'MPesa', reference: '', recipient: item.requestedByName, acknowledgement: '', evidence: '', cashAccount: '' })
+  const [form, setForm] = useState({ method: 'MPesa', recipient: item.requestedByName, acknowledgement: '', evidence: '', cashAccount: '' })
   const [cashAccounts, setCashAccounts] = useState<CashAccount[]>([])
   const [cashAccountLoading, setCashAccountLoading] = useState(true)
   const [cashAccountError, setCashAccountError] = useState<string | null>(null)
@@ -958,11 +958,11 @@ function PettyCashDisbursementForm({ item, close, run }: { item: PettyCashReques
     return () => controller.abort()
   }, [item.projectId])
 
-  return <form className="petty-cash-inline" onSubmit={event => { event.preventDefault(); void run(() => pettyCashApi.disburse(item.id, { method: form.method, externalReference: form.reference, recipientName: form.recipient, recipientAcknowledgementReference: form.acknowledgement, evidenceReference: form.evidence, cashAccountId: form.cashAccount ? Number(form.cashAccount) : null }), 'Petty-cash handover recorded.').then(saved => { if (saved) close() }) }}>
+  return <form className="petty-cash-inline" onSubmit={event => { event.preventDefault(); void run(() => pettyCashApi.disburse(item.id, { method: form.method, recipientName: form.recipient, recipientAcknowledgementReference: form.acknowledgement, evidenceReference: form.evidence, cashAccountId: form.cashAccount ? Number(form.cashAccount) : null }), 'Petty-cash handover recorded.').then(saved => { if (saved) close() }) }}>
     <PettyCashPurpose item={item}/>
     {cashAccountError && <Notice tone="error">Cash accounts could not be loaded: {cashAccountError}</Notice>}
     <label><span>Cash account</span><select required={cashAccounts.length > 0} disabled={cashAccountLoading || Boolean(cashAccountError)} value={form.cashAccount} onChange={event => setForm({ ...form, cashAccount: event.target.value })}><option value="">{cashAccountLoading ? 'Loading accounts…' : cashAccounts.length ? 'Choose cash account' : 'No approved cash account'}</option>{cashAccounts.map(account => <option key={account.id} value={account.id}>{account.name} · {money(account.balance)}</option>)}</select></label>
-    <div className="ops-fields"><label><span>Method</span><select value={form.method} onChange={event => setForm({ ...form, method: event.target.value })}><option>MPesa</option><option>BankTransfer</option><option>Cheque</option><option>Cash</option></select></label><label><span>Payment reference</span><input required minLength={3} value={form.reference} onChange={event => setForm({ ...form, reference: event.target.value })}/></label></div>
+    <label><span>Method</span><select value={form.method} onChange={event => setForm({ ...form, method: event.target.value })}><option>MPesa</option><option>BankTransfer</option><option>Cheque</option><option>Cash</option></select></label>
     <label><span>Recipient</span><input required minLength={3} value={form.recipient} onChange={event => setForm({ ...form, recipient: event.target.value })}/></label>
     <label><span>Recipient acknowledgement</span><input required minLength={3} value={form.acknowledgement} onChange={event => setForm({ ...form, acknowledgement: event.target.value })} placeholder="Signed voucher, PIN or message reference"/></label>
     <label><span>Cash-out evidence</span><input required minLength={3} value={form.evidence} onChange={event => setForm({ ...form, evidence: event.target.value })}/></label>

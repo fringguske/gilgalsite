@@ -28,7 +28,6 @@ import {
   cashAccounts,
   cashLedgerEntries,
   costCodes,
-  payments,
   pettyCashDisbursements,
   pettyCashReceiptConfirmations,
   pettyCashReconciliationEvents,
@@ -219,7 +218,6 @@ export class PettyCashService implements IPettyCashService {
     if (method !== 'MPesa' && method !== 'BankTransfer' && method !== 'Cheque' && method !== 'Cash') {
       throw new ArgumentError('Method must be MPesa, BankTransfer, Cheque, or Cash.')
     }
-    const externalReference = InputNormalizer.requiredText(request.externalReference, 'ExternalReference', 3, 100).toUpperCase()
     const recipient = InputNormalizer.requiredText(request.recipientName, 'RecipientName', 3, 150)
     const acknowledgement = InputNormalizer.requiredText(
       request.recipientAcknowledgementReference, 'RecipientAcknowledgementReference', 3, 500)
@@ -240,28 +238,18 @@ export class PettyCashService implements IPettyCashService {
         .where(eq(pettyCashDisbursements.pettyCashRequestId, item.id))
         .limit(1)
       if (alreadyDisbursed) throw new InvalidOperationError('This petty-cash request has already been disbursed.')
-      const [disbursementReference] = await tx
-        .select({ id: pettyCashDisbursements.id })
-        .from(pettyCashDisbursements)
-        .where(eq(pettyCashDisbursements.externalReference, externalReference))
-        .limit(1)
-      const [paymentReference] = disbursementReference
-        ? [disbursementReference]
-        : await tx
-          .select({ id: payments.id })
-          .from(payments)
-          .where(eq(payments.externalReference, externalReference))
-          .limit(1)
-      if (paymentReference) throw new InvalidOperationError('That payment reference is already recorded.')
       const now = new Date()
+      const disbursementNumber = reference('PCD', now)
       const [disbursement] = await tx
         .insert(pettyCashDisbursements)
         .values({
-          disbursementNumber: reference('PCD', now),
+          disbursementNumber,
           pettyCashRequestId: item.id,
           amount: item.amountApproved,
           method,
-          externalReference,
+          // Finance no longer types a payment reference for petty cash. The column must be filled
+          // and unique, so it takes this handover's own (unique) number.
+          externalReference: disbursementNumber.toUpperCase(),
           recipientName: recipient,
           recipientAcknowledgementReference: acknowledgement,
           evidenceReference: evidence,
@@ -304,7 +292,6 @@ export class PettyCashService implements IPettyCashService {
         details: {
           Amount: disbursement!.amount,
           method,
-          reference: externalReference,
           recipient,
           acknowledgement,
           evidence,

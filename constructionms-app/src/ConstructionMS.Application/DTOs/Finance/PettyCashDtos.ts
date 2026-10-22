@@ -20,7 +20,6 @@ export type DecidePettyCashRequestDto = InferDto<typeof DecidePettyCashRequestDt
 export const DisbursePettyCashRequestDto = dto({
   cashAccountId: f.long().nullable().range(1, '9223372036854775807'),
   method: f.string().required().stringLength(30),
-  externalReference: f.string().required().stringLength(100, 3),
   recipientName: f.string().required().stringLength(150, 3),
   recipientAcknowledgementReference: f.string().required().stringLength(500, 3),
   evidenceReference: f.string().required().stringLength(500, 3),
