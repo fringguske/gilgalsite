@@ -40,6 +40,10 @@ const EngineerRole = 'Engineer'
 const SupervisorRole = 'Supervisor'
 const CeoRole = 'CEO'
 const AuditorRole = 'Auditor'
+/** Store restock requests carry no reason of their own; this fills the required purpose. */
+const StoreRestockPurpose = 'Restock the project store'
+/** The purpose is optional, but the column must not be blank. */
+const NoPurposeGiven = 'Not given'
 
 const ReadRoles: ReadonlySet<string> = new Set([
   CeoRole,
@@ -240,7 +244,7 @@ export class RequisitionWorkflowService implements IRequisitionWorkflowService {
     }
 
     const now = new Date()
-    const purpose = InputNormalizer.requiredText(request.purpose, 'Purpose', 3, 500)
+    const purpose = InputNormalizer.optionalText(request.purpose, 'Purpose', 500) ?? NoPurposeGiven
     const notes = InputNormalizer.optionalText(request.notes, 'Notes', 1_000)
     const actor = actorResult.value!
 
@@ -303,7 +307,7 @@ export class RequisitionWorkflowService implements IRequisitionWorkflowService {
       request.costCodeId,
       request.quantity,
       request.neededByDate,
-      request.reason,
+      StoreRestockPurpose,
       request.notes)
     if (!validation.succeeded) {
       return failure(validation.errorKind, validation.error!)
@@ -326,7 +330,6 @@ export class RequisitionWorkflowService implements IRequisitionWorkflowService {
     }
 
     const now = new Date()
-    const reason = InputNormalizer.requiredText(request.reason, 'Reason', 3, 500)
     const notes = InputNormalizer.optionalText(request.notes, 'Notes', 1_000)
     const actor = actorResult.value!
 
@@ -340,7 +343,7 @@ export class RequisitionWorkflowService implements IRequisitionWorkflowService {
           requestType: RequisitionTypes.StockReplenishment,
           quantity: request.quantity,
           neededByDate: request.neededByDate,
-          purpose: reason,
+          purpose: StoreRestockPurpose,
           notes,
           requestedByUserId: actorUserId,
           status: RequisitionWorkflowStates.AwaitingSupervisorDecision,
@@ -357,14 +360,14 @@ export class RequisitionWorkflowService implements IRequisitionWorkflowService {
         actor,
         null,
         RequisitionWorkflowStates.AwaitingSupervisorDecision,
-        reason,
+        StoreRestockPurpose,
         serializeRequisitionSnapshot(
           request.projectId,
           request.materialId,
           request.costCodeId,
           request.quantity,
           request.neededByDate,
-          reason,
+          StoreRestockPurpose,
           notes,
           RequisitionTypes.StockReplenishment),
         now,
@@ -429,7 +432,7 @@ export class RequisitionWorkflowService implements IRequisitionWorkflowService {
       return failure(OperationErrorKind.Validation, 'The selected cost code is not active for this project.')
     }
 
-    const purpose = InputNormalizer.requiredText(request.purpose, 'Purpose', 3, 500)
+    const purpose = InputNormalizer.optionalText(request.purpose, 'Purpose', 500) ?? NoPurposeGiven
     const notes = InputNormalizer.optionalText(request.notes, 'Notes', 1_000)
     const now = new Date()
     const newRevision = requisition.workflowRevision + 1
@@ -979,7 +982,7 @@ function validateRequestFields(
     InputNormalizer.positiveInt(materialId, 'materialId')
     InputNormalizer.positiveInt(costCodeId, 'costCodeId')
     InputNormalizer.positive(quantity, 'quantity', 18, 3)
-    InputNormalizer.requiredText(purpose, 'purpose', 3, 500)
+    InputNormalizer.optionalText(purpose, 'purpose', 500)
     InputNormalizer.optionalText(notes, 'notes', 1_000)
   } catch (error) {
     if (error instanceof ArgumentError) {

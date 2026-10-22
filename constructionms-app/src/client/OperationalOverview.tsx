@@ -77,12 +77,10 @@ const workspaceConfig: Record<SimplifiedRole, WorkspaceConfig> = {
   Engineer: {
     links: [
       { label: 'Material checks', to: '/requisitions' },
-      { label: 'Delivery checks', to: '/delivery-checks' },
       { label: 'Project progress', to: '/projects' },
     ],
     metrics: [
       { label: 'Material checks', value: (_dashboard, tasks) => tasks.items.filter(task => task.targetPath === '/requisitions').length, attention: value => value > 0 },
-      { label: 'Delivery checks', value: (_dashboard, tasks) => tasks.items.filter(task => task.targetPath === '/delivery-checks').length, attention: value => value > 0 },
       { label: 'Overdue', value: (_dashboard, tasks) => tasks.overdueCount, attention: value => value > 0 },
       { label: 'Assigned projects', value: dashboard => dashboard.visibleProjectCount },
     ],
@@ -103,7 +101,7 @@ const workspaceConfig: Record<SimplifiedRole, WorkspaceConfig> = {
     links: [
       { label: 'Restock', to: '/inventory?action=restock' },
       { label: 'Receive delivery', to: '/inventory?action=receive' },
-      { label: 'Issue materials', to: '/inventory?action=issue' },
+      { label: 'Give to Foreman', to: '/inventory?action=issue' },
       { label: 'Count stock', to: '/inventory?action=count' },
       { label: 'Transfers', to: '/inventory?action=transfers' },
     ],
@@ -132,7 +130,6 @@ const workspaceConfig: Record<SimplifiedRole, WorkspaceConfig> = {
       { label: 'Complete chain', to: '/audit' },
       { label: 'Materials', to: '/inventory' },
       { label: 'Supplier payments', to: '/finance' },
-      { label: 'Period records', to: '/period-close' },
     ],
     metrics: [
       { label: 'Projects visible', value: dashboard => dashboard.visibleProjectCount },

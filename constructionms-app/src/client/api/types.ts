@@ -480,7 +480,7 @@ export interface CreateRequisitionRequest {
   costCodeId: number
   quantity: number
   neededByDate: IsoDate
-  purpose: string
+  purpose?: string | null
   notes?: string | null
 }
 
@@ -490,7 +490,6 @@ export interface CreateStockReplenishmentRequest {
   costCodeId: number
   quantity: number
   neededByDate: IsoDate
-  reason: string
   notes?: string | null
 }
 
@@ -498,7 +497,7 @@ export interface UpdateRequisitionRequest {
   costCodeId: number
   quantity: number
   neededByDate: IsoDate
-  purpose: string
+  purpose?: string | null
   notes?: string | null
   expectedRevision: number
 }

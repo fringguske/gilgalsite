@@ -146,18 +146,10 @@ export class InventoryWorkflowService implements IInventoryWorkflowService {
     const delivered = InputNormalizer.positive(request.deliveredQuantity, 'DeliveredQuantity', 18, 3)
     const accepted = InputNormalizer.nonNegative(request.acceptedQuantity, 'AcceptedQuantity', 18, 3)
     if (dec(accepted).gt(delivered)) throw new ArgumentError('Accepted quantity cannot exceed delivered quantity.')
-    const condition = InputNormalizer.requiredText(request.condition, 'Condition', 1, 30)
-    if (condition !== 'Good' && condition !== 'Damaged' && condition !== 'Mixed') {
-      throw new ArgumentError('Condition must be Good, Damaged, or Mixed.')
-    }
-    const deliveryReference = InputNormalizer.requiredText(
-      request.deliveryNoteReference, 'DeliveryNoteReference', 1, 100).toUpperCase()
+    // The Storekeeper only says how many good ones arrived; the recorded condition follows from that.
+    const condition = dec(accepted).eq(delivered) ? 'Good' : dec(accepted).eq(0) ? 'Damaged' : 'Mixed'
     const evidence = InputNormalizer.optionalText(request.evidenceReference, 'EvidenceReference', 500)
-    const discrepancy = InputNormalizer.optionalText(request.discrepancyNotes, 'DiscrepancyNotes', 1_000)
     const rejected = dec(delivered).minus(accepted)
-    if (rejected.gt(0) && discrepancy === null) {
-      throw new ArgumentError('Discrepancy notes are required when any delivered quantity is rejected.')
-    }
 
     const receiptId = await this.db.transaction(async (tx) => {
       const orders = await tx
@@ -182,15 +174,6 @@ export class InventoryWorkflowService implements IInventoryWorkflowService {
         .orderBy(asc(purchaseOrderLines.id))
       const line = PurchaseOrderInvariant.requireSingleLine({ lines })
 
-      const [duplicate] = await tx
-        .select({ id: goodsReceipts.id })
-        .from(goodsReceipts)
-        .where(and(
-          eq(goodsReceipts.supplierId, order.supplierId),
-          sql`upper(${goodsReceipts.deliveryNoteReference}) = ${deliveryReference}`))
-        .limit(1)
-      if (duplicate) throw new InvalidOperationError('That supplier delivery note is already recorded.')
-
       // A pending engineering check still reserves the outstanding PO quantity, while a
       // technically rejected receipt releases it so the supplier can deliver a replacement.
       const earlierReceipts = await loadReceiptsWithReviewsAsync(
@@ -205,10 +188,11 @@ export class InventoryWorkflowService implements IInventoryWorkflowService {
       }
 
       const now = new Date()
+      const receiptNumber = reference('GRN', now)
       const [receipt] = await tx
         .insert(goodsReceipts)
         .values({
-          receiptNumber: reference('GRN', now),
+          receiptNumber,
           purchaseOrderId: order.id,
           purchaseOrderLineId: line.id,
           supplierId: order.supplierId,
@@ -218,16 +202,18 @@ export class InventoryWorkflowService implements IInventoryWorkflowService {
           acceptedQuantity: accepted,
           rejectedQuantity: toNumber(rejected),
           condition,
-          deliveryNoteReference: deliveryReference,
+          // The Storekeeper no longer types the supplier's delivery note number. The column must
+          // be filled and unique per supplier, so it takes this receipt's own (unique) number.
+          deliveryNoteReference: receiptNumber.toUpperCase(),
           evidenceReference: evidence,
-          discrepancyNotes: discrepancy,
+          discrepancyNotes: null,
           receivedByUserId: actorUserId,
           receivedAt: now,
         })
         .returning()
       if (dec(accepted).gt(0)) {
         await changeBalanceAsync(tx, order.projectId, line.materialId, dec(accepted), 'Receipt', 'GoodsReceipt',
-          receipt!.id, receipt!.receiptNumber, actorUserId, discrepancy, now)
+          receipt!.id, receipt!.receiptNumber, actorUserId, null, now)
       }
       await this.events.appendAsync({
         chainKey: chain(order.requisitionId),
@@ -239,7 +225,7 @@ export class InventoryWorkflowService implements IInventoryWorkflowService {
         eventType: 'GoodsReceived',
         actorUserId,
         actorRole,
-        details: { delivered, accepted, rejected: toNumber(rejected), condition, deliveryReference },
+        details: { delivered, accepted, rejected: toNumber(rejected), condition },
         occurredAt: now,
       }, tx)
       return receipt!.id
@@ -653,9 +639,6 @@ export class InventoryWorkflowService implements IInventoryWorkflowService {
       if (dec(received).gt(issue.quantityIssued)) {
         throw new ArgumentError('Received quantity cannot exceed issued quantity.')
       }
-      if (!dec(received).eq(issue.quantityIssued) && notes === null) {
-        throw new ArgumentError('Explain any difference between issued and received quantities.')
-      }
       const now = new Date()
       const status = dec(received).eq(issue.quantityIssued)
         ? MaterialIssueStatuses.Confirmed
@@ -691,12 +674,8 @@ export class InventoryWorkflowService implements IInventoryWorkflowService {
     const type = InputNormalizer.requiredText(request.usageType, 'UsageType', 1, 20)
     if (type !== 'Used' && type !== 'Wastage') throw new ArgumentError('Usage type must be Used or Wastage.')
     const quantity = InputNormalizer.positive(request.quantity, 'Quantity', 18, 3)
-    // The work area or purpose of material used is optional; wastage always needs its reason.
-    const givenReason = InputNormalizer.optionalText(request.purposeOrReason, 'PurposeOrReason', 500)
-    if (type === 'Wastage' && (givenReason === null || givenReason.length < 3)) {
-      throw new ArgumentError('Give the reason for the wastage.', 'PurposeOrReason')
-    }
-    const reason = givenReason ?? ''
+    // The work area, purpose or wastage reason is optional.
+    const reason = InputNormalizer.optionalText(request.purposeOrReason, 'PurposeOrReason', 500) ?? ''
     const evidence = InputNormalizer.optionalText(request.evidenceReference, 'EvidenceReference', 500)
     const idempotencyKey = InputNormalizer.requiredText(request.idempotencyKey, 'IdempotencyKey', 8, 100)
     await this.db.transaction(async (tx) => {
@@ -1068,7 +1047,7 @@ export class InventoryWorkflowService implements IInventoryWorkflowService {
   ): Promise<StockCountResponseDto> {
     await this.requireRoleAsync(actorUserId, actorRole, 'Storekeeper')
     const counted = InputNormalizer.nonNegative(request.countedQuantity, 'CountedQuantity', 18, 3)
-    const notes = InputNormalizer.requiredText(request.notes, 'Notes', 3, 1_000)
+    const notes = InputNormalizer.optionalText(request.notes, 'Notes', 1_000) ?? ''
     const countId = await this.db.transaction(async (tx) => {
       await this.requireProjectAccessAsync(tx, actorUserId, request.projectId)
       const balance = await getBalanceAsync(tx, request.projectId, request.materialId)

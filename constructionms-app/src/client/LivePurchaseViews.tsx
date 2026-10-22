@@ -345,7 +345,7 @@ export function LiveProcurementView({ currentUser }: LiveProcurementViewProps) {
                   canOrder={procurement}
                   onPlaced={(order) => {
                     setOrders((current) => [order, ...current])
-                    setNotice(`${order.purchaseOrderNumber} placed with ${order.supplierName}. Stores now see it as an expected delivery.`)
+                    setNotice(`${order.purchaseOrderNumber} placed with ${order.supplierName}.`)
                   }}
                 />
               ))

@@ -1841,7 +1841,7 @@ function CreateRequisitionForm({ projects, materials, openInitially = false, onC
         costCodeId: Number(costCodeId),
         quantity: Number(quantity),
         neededByDate,
-        purpose: purpose.trim(),
+        purpose: purpose.trim() || null,
         notes: notes.trim() || null,
       })
       onCreated(created)
@@ -2024,14 +2024,14 @@ function CreateRequisitionForm({ projects, materials, openInitially = false, onC
             </label>
             </>}
             <label className="lav-field compact span-two">
-              <span>Purpose</span>
+              <span>{materialNotListed ? 'Purpose' : 'Work area or purpose (optional)'}</span>
               <input
                 value={purpose}
                 onChange={(event) => setPurpose(event.currentTarget.value)}
-                minLength={3}
+                minLength={materialNotListed ? 3 : undefined}
                 maxLength={500}
                 placeholder="Example: Ground-floor columns"
-                required
+                required={materialNotListed}
               />
             </label>
             {!materialNotListed && <label className="lav-field compact span-three">
@@ -2172,7 +2172,7 @@ function ForemanRevisionForm({
         costCodeId: Number(costCodeId),
         quantity: Number(quantity),
         neededByDate,
-        purpose: purpose.trim(),
+        purpose: purpose.trim() || null,
         notes: notes.trim() || null,
         expectedRevision: requisition.workflowRevision,
       })
@@ -2250,13 +2250,11 @@ function ForemanRevisionForm({
           />
         </label>
         <label className="lav-field compact span-two">
-          <span>Purpose</span>
+          <span>Work area or purpose (optional)</span>
           <input
             value={purpose}
             onChange={(event) => setPurpose(event.currentTarget.value)}
-            minLength={3}
             maxLength={500}
-            required
           />
         </label>
         <label className="lav-field compact span-three">

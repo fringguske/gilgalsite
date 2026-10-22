@@ -912,7 +912,7 @@ export const inventoryApi = {
   receipts: (signal?: AbortSignal, query: PageQuery = {}) => request<PaginatedResult<GoodsReceipt>>('/inventory/receipts', { signal }, pageQuery({ page: 1, pageSize: 100, ...query })),
   technicalAcceptances: (query: { page?: number; pageSize?: number; projectId?: number; status?: Exclude<TechnicalAcceptanceStatus, 'NotRequired'> } = {}, signal?: AbortSignal) =>
     request<PaginatedResult<TechnicalAcceptanceWorkItem>>('/inventory/technical-acceptances', { signal }, { page: 1, pageSize: 100, ...query }),
-  receive: (body: { purchaseOrderId: number; deliveredQuantity: number; acceptedQuantity: number; condition: string; deliveryNoteReference: string; evidenceReference?: string | null; discrepancyNotes?: string | null }, signal?: AbortSignal) =>
+  receive: (body: { purchaseOrderId: number; deliveredQuantity: number; acceptedQuantity: number; evidenceReference?: string | null }, signal?: AbortSignal) =>
     request<GoodsReceipt>('/inventory/receipts', { method: 'POST', body, signal }),
   recordTechnicalAcceptance: (receiptId: number, body: { outcome: TechnicalAcceptanceOutcome; notes: string; evidenceReference?: string | null }, signal?: AbortSignal) =>
     request<TechnicalAcceptanceWorkItem>(`/inventory/receipts/${receiptId}/technical-acceptance`, { method: 'POST', body, signal }),
@@ -935,7 +935,7 @@ export const inventoryApi = {
   resolveTransfer: (id: number, body: { disposition: 'AcceptedLoss' | 'RecoveredAtDestination' | 'ReturnedToSource'; notes: string; evidenceReference?: string | null }, signal?: AbortSignal) =>
     request<StockTransfer>(`/inventory/transfers/${id}/resolve`, { method: 'POST', body, signal }),
   counts: (signal?: AbortSignal, query: PageQuery = {}) => request<PaginatedResult<StockCount>>('/inventory/counts', { signal }, pageQuery({ page: 1, pageSize: 100, ...query })),
-  createCount: (body: { projectId: number; materialId: number; countedQuantity: number; notes: string }, signal?: AbortSignal) =>
+  createCount: (body: { projectId: number; materialId: number; countedQuantity: number; notes: string | null }, signal?: AbortSignal) =>
     request<StockCount>('/inventory/counts', { method: 'POST', body, signal }),
   reviewCount: (id: number, body: { approve: boolean; notes: string }, signal?: AbortSignal) =>
     request<StockCount>(`/inventory/counts/${id}/review`, { method: 'POST', body, signal }),

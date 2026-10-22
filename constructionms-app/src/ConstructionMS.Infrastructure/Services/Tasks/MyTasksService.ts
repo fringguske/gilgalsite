@@ -1,4 +1,4 @@
-import { and, asc, eq, exists, gt, gte, inArray, lt, ne, not, or, sql, type SQL } from 'drizzle-orm'
+import { and, asc, eq, exists, gt, gte, inArray, ne, not, or, sql, type SQL } from 'drizzle-orm'
 import { alias } from 'drizzle-orm/pg-core'
 import { ArgumentError, UnauthorizedAccessError } from '@/ConstructionMS.Application/Common/Exceptions'
 import { Decimal, dec, formatNumber, sum } from '@/ConstructionMS.Application/Common/Money'
@@ -10,7 +10,6 @@ import {
   ControlledCorrectionStatuses,
   OpeningPositionStatuses,
   OpeningPositionTypes,
-  OperationalPeriodScopes,
   OperationalPeriodStatuses,
 } from '@/ConstructionMS.Domain/Entities/ControlWorkspaceEntities'
 import { InvoiceStatuses, PettyCashReconciliationStatuses, PettyCashStatuses } from '@/ConstructionMS.Domain/Entities/FinanceEntities'
@@ -59,7 +58,6 @@ import {
   users,
 } from '../../Data/schema'
 
-const BusinessUtcOffsetMs = 3 * 60 * 60 * 1000
 const HourMs = 60 * 60 * 1000
 
 const fromProject = alias(projects, 'from_project')
@@ -436,8 +434,6 @@ export class MyTasksService implements IMyTasksService {
         openedAt: item.confirmedAt ?? item.issuedAt, urgent: true,
       })
     }
-
-    await this.addPeriodSubmissionTasksAsync(tasks, 'Supervisor', OperationalPeriodScopes.Inventory, projectIds)
 
     const pettyCash = await this.db
       .select({ request: pettyCashRequests, projectName: projects.name })
@@ -973,36 +969,6 @@ export class MyTasksService implements IMyTasksService {
         })
       }
     }
-
-    await this.addPeriodSubmissionTasksAsync(tasks, 'Finance Officer', OperationalPeriodScopes.Finance, projectIds)
-  }
-
-  private async addPeriodSubmissionTasksAsync(
-    tasks: MyTaskResponseDto[],
-    requiredRole: string,
-    scope: string,
-    projectIds: number[],
-  ): Promise<void> {
-    const today = businessToday()
-    const periods = await this.loadPeriodsWithLatestEventAsync(and(
-      inArray(operationalPeriods.projectId, projectIds),
-      eq(operationalPeriods.scope, scope),
-      inArray(operationalPeriods.status, [OperationalPeriodStatuses.Open, OperationalPeriodStatuses.Returned]),
-      lt(operationalPeriods.endDate, today)))
-    for (const item of periods) {
-      const latest = item.latest
-      if (latest === null) throw new Error('Sequence contains no elements')
-      const returned = item.period.status === OperationalPeriodStatuses.Returned
-      this.add(tasks, {
-        key: `period-close-submit:${item.period.id}:r${latest.sequenceNumber}`,
-        type: 'OperationalPeriodCloseSubmission',
-        title: returned ? 'Resubmit period close' : 'Submit period close',
-        detail: `${item.period.scope} · ${item.period.name}`, requiredRole,
-        projectId: item.period.projectId, projectName: item.projectName,
-        sourceType: 'OperationalPeriod', sourceId: item.period.id, targetPath: '/period-close',
-        openedAt: returned ? latest.occurredAt : businessDayEndExclusiveUtc(item.period.endDate), urgent: true,
-      })
-    }
   }
 
   private async loadPeriodsWithLatestEventAsync(filter: SQL | undefined) {
@@ -1120,14 +1086,5 @@ function quantity(amount: Decimal.Value): string {
 /** .NET `DateTime.Ticks` (100 ns units since 0001-01-01) of a UTC instant. */
 export function ticks(value: Date): string {
   return ((BigInt(value.getTime()) + 62_135_596_800_000n) * 10_000n).toString()
-}
-
-function businessToday(): string {
-  return new Date(Date.now() + BusinessUtcOffsetMs).toISOString().slice(0, 10)
-}
-
-function businessDayEndExclusiveUtc(date: string): Date {
-  const [year, month, day] = date.split('-').map(Number) as [number, number, number]
-  return new Date(Date.UTC(year, month - 1, day + 1) - BusinessUtcOffsetMs)
 }
 

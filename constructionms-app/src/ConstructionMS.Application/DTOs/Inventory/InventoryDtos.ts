@@ -3,14 +3,12 @@ import { INT_MAX } from '@/ConstructionMS.Application/Common/Pagination'
 
 const QUANTITY_MAX = '999999999999999.999'
 
+/** The accepted quantity is how many good ones arrived; only those go into stock. */
 export const ReceiveGoodsRequestDto = dto({
   purchaseOrderId: f.int().range(1, INT_MAX),
   deliveredQuantity: f.decimal().range('0.001', QUANTITY_MAX).decimalPrecision(18, 3),
   acceptedQuantity: f.decimal().range('0', QUANTITY_MAX).decimalPrecision(18, 3),
-  condition: f.string().required().stringLength(30),
-  deliveryNoteReference: f.string().required().stringLength(100),
   evidenceReference: f.string().nullable().stringLength(500),
-  discrepancyNotes: f.string().nullable().stringLength(1_000),
 })
 export type ReceiveGoodsRequestDto = InferDto<typeof ReceiveGoodsRequestDto>
 
@@ -37,7 +35,7 @@ export type ConfirmMaterialIssueRequestDto = InferDto<typeof ConfirmMaterialIssu
 export const RecordMaterialUsageRequestDto = dto({
   usageType: f.string().required().stringLength(20),
   quantity: f.decimal().range('0.001', QUANTITY_MAX).decimalPrecision(18, 3),
-  /** Optional for use; a wastage record must say why the material was wasted. */
+  /** Optional, for use and for wastage. */
   purposeOrReason: f.string().nullable().stringLength(500),
   evidenceReference: f.string().nullable().stringLength(500),
   idempotencyKey: f.string().required().stringLength(100, 8),
@@ -70,7 +68,7 @@ export const CreateStockCountRequestDto = dto({
   projectId: f.int().range(1, INT_MAX),
   materialId: f.int().range(1, INT_MAX),
   countedQuantity: f.decimal().range('0', QUANTITY_MAX).decimalPrecision(18, 3),
-  notes: f.string().required().stringLength(1_000, 3),
+  notes: f.string().nullable().stringLength(1_000),
 })
 export type CreateStockCountRequestDto = InferDto<typeof CreateStockCountRequestDto>
 

@@ -55,7 +55,7 @@ const roleNavigation: Record<ConstructionRole, readonly NavItem[]> = {
     { to: '/', label: 'Overview', glyph: 'OV' },
     { to: '/tasks', label: 'My work', glyph: 'TK' },
     { to: '/projects', label: 'Projects', glyph: 'PR' },
-    { to: '/requisitions', label: 'Materials', glyph: 'MR', activePaths: ['/sourcing', '/purchase-orders', '/inventory', '/opening-positions', '/custody-close-out', '/period-close'] },
+    { to: '/requisitions', label: 'Materials', glyph: 'MR', activePaths: ['/sourcing', '/purchase-orders', '/inventory', '/opening-positions', '/custody-close-out'] },
     { to: '/finance', label: 'Money', glyph: 'PA', activePaths: ['/petty-cash'] },
   ],
   Engineer: [
@@ -73,7 +73,7 @@ const roleNavigation: Record<ConstructionRole, readonly NavItem[]> = {
   Storekeeper: [
     { to: '/', label: 'Overview', glyph: 'OV' },
     { to: '/tasks', label: 'My work', glyph: 'TK' },
-    { to: '/inventory', label: 'Store', glyph: 'ST', activePaths: ['/purchase-orders', '/opening-positions', '/period-close', '/requisitions'] },
+    { to: '/inventory', label: 'Store', glyph: 'ST', activePaths: ['/purchase-orders', '/opening-positions', '/requisitions'] },
   ],
   'Procurement Officer': [
     { to: '/', label: 'Overview', glyph: 'OV' },
@@ -88,14 +88,14 @@ const roleNavigation: Record<ConstructionRole, readonly NavItem[]> = {
     { to: '/finance', label: 'Supplier payments', glyph: 'IN', activePaths: ['/purchase-orders', '/inventory'] },
     { to: '/petty-cash', label: 'Petty cash', glyph: 'PC' },
     { to: '/cash-book', label: 'Cash book', glyph: 'CB' },
-    { to: '/projects', label: 'Finance controls', glyph: 'PR', activePaths: ['/opening-positions', '/period-close'] },
+    { to: '/projects', label: 'Finance controls', glyph: 'PR', activePaths: ['/opening-positions'] },
   ],
   Auditor: [
     { to: '/', label: 'Overview', glyph: 'OV' },
     { to: '/projects', label: 'Projects', glyph: 'PR' },
     { to: '/inventory', label: 'Materials', glyph: 'MI', activePaths: ['/requisitions', '/sourcing', '/suppliers', '/purchase-orders'] },
     { to: '/finance', label: 'Money', glyph: 'MO', activePaths: ['/petty-cash'] },
-    { to: '/audit', label: 'Records', glyph: 'AU', activePaths: ['/opening-positions', '/period-close'] },
+    { to: '/audit', label: 'Records', glyph: 'AU', activePaths: ['/opening-positions'] },
   ],
 }
 
@@ -110,10 +110,10 @@ const additionalRoleRoutes: Partial<Record<ConstructionRole, readonly string[]>>
     '/petty-cash',
     '/period-close',
   ],
-  Supervisor: ['/sourcing', '/purchase-orders', '/inventory', '/opening-positions', '/custody-close-out', '/period-close', '/petty-cash'],
+  Supervisor: ['/sourcing', '/purchase-orders', '/inventory', '/opening-positions', '/custody-close-out', '/petty-cash'],
   Engineer: ['/delivery-checks'],
-  Storekeeper: ['/purchase-orders', '/opening-positions', '/period-close', '/requisitions'],
-  'Finance Officer': ['/purchase-orders', '/inventory', '/opening-positions', '/period-close'],
+  Storekeeper: ['/purchase-orders', '/opening-positions', '/requisitions'],
+  'Finance Officer': ['/purchase-orders', '/inventory', '/opening-positions'],
   Auditor: [
     '/requisitions',
     '/sourcing',
@@ -121,7 +121,6 @@ const additionalRoleRoutes: Partial<Record<ConstructionRole, readonly string[]>>
     '/purchase-orders',
     '/opening-positions',
     '/petty-cash',
-    '/period-close',
   ],
 }
 
@@ -153,11 +152,10 @@ const roleContextSections: Partial<Record<ConstructionRole, readonly ContextSect
     links: [
       { to: '/tasks', label: 'Waiting decisions' },
       { to: '/opening-positions', label: 'Starting balances' },
-      { to: '/period-close', label: 'Period closing' },
     ],
   }],
   Supervisor: [{
-    paths: ['/requisitions', '/sourcing', '/purchase-orders', '/inventory', '/opening-positions', '/custody-close-out', '/period-close'],
+    paths: ['/requisitions', '/sourcing', '/purchase-orders', '/inventory', '/opening-positions', '/custody-close-out'],
     label: 'Materials',
     links: [
       { to: '/requisitions', label: 'Requests' },
@@ -167,7 +165,6 @@ const roleContextSections: Partial<Record<ConstructionRole, readonly ContextSect
       { to: '/inventory?section=movements', label: 'Movements' },
       { to: '/opening-positions', label: 'Opening stock' },
       { to: '/custody-close-out', label: 'Handover differences' },
-      { to: '/period-close', label: 'Period close' },
     ],
   }, {
     paths: ['/finance', '/petty-cash'],
@@ -178,16 +175,8 @@ const roleContextSections: Partial<Record<ConstructionRole, readonly ContextSect
       { to: '/petty-cash', label: 'Petty cash' },
     ],
   }],
-  Engineer: [{
-    paths: ['/requisitions', '/delivery-checks'],
-    label: 'Checks',
-    links: [
-      { to: '/requisitions', label: 'Material requests' },
-      { to: '/delivery-checks', label: 'Delivered materials' },
-    ],
-  }],
   Storekeeper: [{
-    paths: ['/inventory', '/purchase-orders', '/opening-positions', '/period-close', '/requisitions'],
+    paths: ['/inventory', '/purchase-orders', '/opening-positions', '/requisitions'],
     label: 'Store',
     links: [
       { to: '/inventory', label: 'Operations' },
@@ -196,7 +185,6 @@ const roleContextSections: Partial<Record<ConstructionRole, readonly ContextSect
       { to: '/purchase-orders', label: 'Expected deliveries' },
       { to: '/requisitions', label: 'Request tracker' },
       { to: '/opening-positions', label: 'Opening stock' },
-      { to: '/period-close', label: 'Corrections' },
     ],
   }],
   'Finance Officer': [{
@@ -211,12 +199,11 @@ const roleContextSections: Partial<Record<ConstructionRole, readonly ContextSect
       { to: '/finance?section=executed', label: 'Payments paid' },
     ],
   }, {
-    paths: ['/projects', '/opening-positions', '/period-close'],
+    paths: ['/projects', '/opening-positions'],
     label: 'Finance controls',
     links: [
       { to: '/projects', label: 'Project budgets' },
       { to: '/opening-positions', label: 'Opening cash' },
-      { to: '/period-close', label: 'Period closing' },
     ],
   }],
   'Procurement Officer': [{
@@ -248,12 +235,11 @@ const roleContextSections: Partial<Record<ConstructionRole, readonly ContextSect
       { to: '/petty-cash', label: 'Petty cash' },
     ],
   }, {
-    paths: ['/audit', '/opening-positions', '/period-close'],
+    paths: ['/audit', '/opening-positions'],
     label: 'Records',
     links: [
       { to: '/audit', label: 'Complete chain' },
       { to: '/opening-positions', label: 'Opening positions' },
-      { to: '/period-close', label: 'Period closing' },
     ],
   }],
 }
