@@ -30,7 +30,8 @@ export type AuthorizePaymentRequestDto = InferDto<typeof AuthorizePaymentRequest
 export const ExecutePaymentRequestDto = dto({
   cashAccountId: f.long().nullable().range(1, '9223372036854775807'),
   method: f.string().required().stringLength(30),
-  externalReference: f.string().required().stringLength(100),
+  /** Optional; left empty, the payment's own number is recorded in its place. */
+  externalReference: f.string().nullable().stringLength(100),
   evidenceReference: f.string().nullable().stringLength(500),
 })
 export type ExecutePaymentRequestDto = InferDto<typeof ExecutePaymentRequestDto>

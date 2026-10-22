@@ -953,7 +953,7 @@ export const financeApi = {
     request<SupplierInvoice>(`/finance/invoices/${id}/authorize`, { method: 'POST', body: { notes: notes || null }, signal }),
   authorizations: (unpaidOnly = false, signal?: AbortSignal, query: PageQuery = {}) =>
     request<PaginatedResult<PaymentAuthorization>>('/finance/authorizations', { signal }, { ...pageQuery({ page: 1, pageSize: 100, ...query }), unpaidOnly }),
-  pay: (id: number, body: { method: string; externalReference: string; evidenceReference?: string | null; cashAccountId?: number | null }, signal?: AbortSignal) =>
+  pay: (id: number, body: { method: string; externalReference?: string | null; evidenceReference?: string | null; cashAccountId?: number | null }, signal?: AbortSignal) =>
     request<Payment>(`/finance/authorizations/${id}/pay`, { method: 'POST', body, signal }),
   payments: (signal?: AbortSignal, query: PageQuery = {}) => request<PaginatedResult<Payment>>('/finance/payments', { signal }, pageQuery({ page: 1, pageSize: 100, ...query })),
   cashBook: (signal?: AbortSignal) => request<CashBook>('/finance/cash-book', { signal }),

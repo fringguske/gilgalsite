@@ -161,6 +161,14 @@ export class FinanceWorkflowService implements IFinanceWorkflowService {
         throw new InvalidOperationError(
           'The full purchase-order quantity must be accepted by Stores before its supplier invoice can enter Finance review.')
       }
+      // The three-way match runs as the invoice is entered. An invoice that does not match is
+      // not saved, so a typing mistake can be corrected without using up the invoice number.
+      const comparison = compareInvoice({ quantity, unitPrice, amount }, line, acceptedQuantity)
+      const differences = invoiceDifferences({ quantity, unitPrice, amount }, line, acceptedQuantity, comparison)
+      if (differences.length > 0) {
+        throw new InvalidOperationError(
+          `The invoice does not match: ${differences.join('; ')}. Check the figures, or ask the supplier for a corrected invoice.`)
+      }
       const [live] = await tx
         .select({ id: supplierInvoices.id })
         .from(supplierInvoices)
@@ -205,6 +213,8 @@ export class FinanceWorkflowService implements IFinanceWorkflowService {
         details: { quantity, unitPrice, amount, document },
         occurredAt: now,
       }, tx)
+      await this.recordMatchAsync(
+        tx, invoice!, acceptedQuantity, comparison, order.requisitionId, actorUserId, actorRole, AutomaticMatchNote, now)
       return invoice!.id
     }, Serializable)
     return await this.loadInvoiceAsync(invoiceId)
@@ -241,49 +251,61 @@ export class FinanceWorkflowService implements IFinanceWorkflowService {
         throw new InvalidOperationError(
           'The full purchase-order quantity must be accepted by Stores before Finance can complete the match.')
       }
-      const quantityMatches = dec(invoice.quantity).eq(accepted)
-      const priceMatches = dec(invoice.unitPrice).eq(line.unitPrice)
-      const amountMatches = dec(invoice.amount).eq(roundAwayFromZero(dec(invoice.quantity).times(invoice.unitPrice), 2))
-      const allMatch = quantityMatches && priceMatches && amountMatches
-      const now = new Date()
-      // The Finance match itself records the payment authority; no separate Supervisor authorization step exists.
-      const status = !allMatch
-        ? InvoiceStatuses.Mismatch
-        : dec(invoice.amount).gt(FinanceWorkflowService.CeoExceptionThreshold)
-          ? InvoiceStatuses.AwaitingCeoApproval
-          : InvoiceStatuses.Authorized
-      await tx
-        .update(supplierInvoices)
-        .set({
-          receivedQuantitySnapshot: toNumber(accepted),
-          reviewedByUserId: actorUserId,
-          reviewedAt: now,
-          matchNotes: notes,
-          status,
-        })
-        .where(eq(supplierInvoices.id, invoice.id))
-      const requisitionId = order!.requisitionId
-      await this.events.appendAsync({
-        chainKey: chain(requisitionId),
-        requisitionId,
-        projectId: invoice.projectId,
-        entityType: 'SupplierInvoice',
-        entityId: invoice.id,
-        referenceNumber: invoice.invoiceNumber,
-        eventType: allMatch
-          ? (status === InvoiceStatuses.AwaitingCeoApproval ? 'InvoiceMatchedCeoException' : 'InvoiceMatched')
-          : 'InvoiceMismatch',
-        actorUserId,
-        actorRole,
-        details: { quantityMatches, priceMatches, amountMatches, accepted: toNumber(accepted), notes },
-        occurredAt: now,
-      }, tx)
-      if (status === InvoiceStatuses.Authorized) {
-        const authorization = await insertAuthorizationAsync(tx, invoice, actorUserId, notes, now)
-        await this.appendAuthorizedEventAsync(tx, authorization, invoice, requisitionId, actorUserId, actorRole, notes, now)
-      }
+      await this.recordMatchAsync(tx, invoice, accepted, compareInvoice(invoice, line, accepted),
+        order!.requisitionId, actorUserId, actorRole, notes, new Date())
     }, Serializable)
     return await this.loadInvoiceAsync(id)
+  }
+
+  /** Records a three-way match result and, when it allows payment, the payment authorization. */
+  private async recordMatchAsync(
+    tx: DbExecutor,
+    invoice: SupplierInvoiceRow,
+    accepted: Decimal,
+    comparison: InvoiceComparison,
+    requisitionId: number,
+    actorUserId: number,
+    actorRole: string,
+    notes: string | null,
+    now: Date,
+  ): Promise<void> {
+    const { quantityMatches, priceMatches, amountMatches } = comparison
+    const allMatch = quantityMatches && priceMatches && amountMatches
+    // The match itself records the payment authority; no separate Supervisor authorization step exists.
+    const status = !allMatch
+      ? InvoiceStatuses.Mismatch
+      : dec(invoice.amount).gt(FinanceWorkflowService.CeoExceptionThreshold)
+        ? InvoiceStatuses.AwaitingCeoApproval
+        : InvoiceStatuses.Authorized
+    await tx
+      .update(supplierInvoices)
+      .set({
+        receivedQuantitySnapshot: toNumber(accepted),
+        reviewedByUserId: actorUserId,
+        reviewedAt: now,
+        matchNotes: notes,
+        status,
+      })
+      .where(eq(supplierInvoices.id, invoice.id))
+    await this.events.appendAsync({
+      chainKey: chain(requisitionId),
+      requisitionId,
+      projectId: invoice.projectId,
+      entityType: 'SupplierInvoice',
+      entityId: invoice.id,
+      referenceNumber: invoice.invoiceNumber,
+      eventType: allMatch
+        ? (status === InvoiceStatuses.AwaitingCeoApproval ? 'InvoiceMatchedCeoException' : 'InvoiceMatched')
+        : 'InvoiceMismatch',
+      actorUserId,
+      actorRole,
+      details: { quantityMatches, priceMatches, amountMatches, accepted: toNumber(accepted), notes },
+      occurredAt: now,
+    }, tx)
+    if (status === InvoiceStatuses.Authorized) {
+      const authorization = await insertAuthorizationAsync(tx, invoice, actorUserId, notes, now)
+      await this.appendAuthorizedEventAsync(tx, authorization, invoice, requisitionId, actorUserId, actorRole, notes, now)
+    }
   }
 
   async recordCeoDecisionAsync(
@@ -406,7 +428,7 @@ export class FinanceWorkflowService implements IFinanceWorkflowService {
     if (method !== 'BankTransfer' && method !== 'MPesa' && method !== 'Cheque' && method !== 'Cash') {
       throw new ArgumentError('Payment method must be BankTransfer, MPesa, Cheque, or Cash.')
     }
-    const externalReference = InputNormalizer.requiredText(request.externalReference, 'ExternalReference', 1, 100).toUpperCase()
+    const givenReference = InputNormalizer.optionalText(request.externalReference, 'ExternalReference', 100)?.toUpperCase() ?? null
     const evidence = InputNormalizer.optionalText(request.evidenceReference, 'EvidenceReference', 500)
     const paymentId = await this.db.transaction(async (tx) => {
       const authorization = singleOrDefault(await tx
@@ -434,28 +456,33 @@ export class FinanceWorkflowService implements IFinanceWorkflowService {
         .where(eq(payments.paymentAuthorizationId, authorization.authorization.id))
         .limit(1)
       if (alreadyPaid) throw new InvalidOperationError('This authorization has already been paid.')
-      const [paymentReference] = await tx
-        .select({ id: payments.id })
-        .from(payments)
-        .where(eq(payments.externalReference, externalReference))
-        .limit(1)
-      const [pettyCashReference] = paymentReference
-        ? [paymentReference]
-        : await tx
-          .select({ id: pettyCashDisbursements.id })
-          .from(pettyCashDisbursements)
-          .where(eq(pettyCashDisbursements.externalReference, externalReference))
+      if (givenReference !== null) {
+        const [paymentReference] = await tx
+          .select({ id: payments.id })
+          .from(payments)
+          .where(eq(payments.externalReference, givenReference))
           .limit(1)
-      if (pettyCashReference) throw new InvalidOperationError('That external payment reference is already recorded.')
+        const [pettyCashReference] = paymentReference
+          ? [paymentReference]
+          : await tx
+            .select({ id: pettyCashDisbursements.id })
+            .from(pettyCashDisbursements)
+            .where(eq(pettyCashDisbursements.externalReference, givenReference))
+            .limit(1)
+        if (pettyCashReference) throw new InvalidOperationError('That external payment reference is already recorded.')
+      }
       const now = new Date()
+      const paymentNumber = reference('PAY', now)
       const [payment] = await tx
         .insert(payments)
         .values({
-          paymentNumber: reference('PAY', now),
+          paymentNumber,
           paymentAuthorizationId: authorization.authorization.id,
           amount: authorization.authorization.amount,
           method,
-          externalReference,
+          // The column must be filled and unique, so a payment without a bank, M-Pesa or cheque
+          // reference records its own (unique) payment number instead.
+          externalReference: givenReference ?? paymentNumber.toUpperCase(),
           evidenceReference: evidence,
           paidByUserId: actorUserId,
           paidAt: now,
@@ -506,7 +533,7 @@ export class FinanceWorkflowService implements IFinanceWorkflowService {
         details: {
           Amount: payment!.amount,
           method,
-          externalReference,
+          externalReference: givenReference,
           ReceiptNumber: receipt!.receiptNumber,
           evidence,
           cashAccountId: cashAccount?.id ?? null,
@@ -1158,6 +1185,48 @@ async function loadReceiptOutcomesAsync(
     .from(goodsReceipts)
     .where(inArray(goodsReceipts.purchaseOrderId, purchaseOrderIds))
     .orderBy(asc(goodsReceipts.id))
+}
+
+const AutomaticMatchNote = 'Matched automatically when the invoice was entered.'
+
+interface InvoiceComparison {
+  quantityMatches: boolean
+  priceMatches: boolean
+  amountMatches: boolean
+  expectedAmount: Decimal
+}
+
+type InvoiceFigures = { quantity: Decimal.Value; unitPrice: Decimal.Value; amount: Decimal.Value }
+
+/** The three-way match: invoice against the order price and what Stores accepted as good. */
+function compareInvoice(invoice: InvoiceFigures, line: { unitPrice: Decimal.Value }, accepted: Decimal): InvoiceComparison {
+  const expectedAmount = roundAwayFromZero(dec(invoice.quantity).times(invoice.unitPrice), 2)
+  return {
+    quantityMatches: dec(invoice.quantity).eq(accepted),
+    priceMatches: dec(invoice.unitPrice).eq(line.unitPrice),
+    amountMatches: dec(invoice.amount).eq(expectedAmount),
+    expectedAmount,
+  }
+}
+
+function invoiceDifferences(
+  invoice: InvoiceFigures,
+  line: { unitPrice: Decimal.Value },
+  accepted: Decimal,
+  comparison: InvoiceComparison,
+): string[] {
+  const differences: string[] = []
+  if (!comparison.quantityMatches) {
+    differences.push(`Stores accepted ${dec(accepted).toString()} as good, the invoice charges for ${dec(invoice.quantity).toString()}`)
+  }
+  if (!comparison.priceMatches) {
+    differences.push(`the order price is KES ${formatNumber(line.unitPrice)}, the invoice says KES ${formatNumber(invoice.unitPrice)}`)
+  }
+  if (!comparison.amountMatches) {
+    differences.push(`${dec(invoice.quantity).toString()} × ${formatNumber(invoice.unitPrice)} is KES ${formatNumber(comparison.expectedAmount)}, `
+      + `the invoice total says KES ${formatNumber(invoice.amount)}`)
+  }
+  return differences
 }
 
 function quantityEligibleForInvoice(receipts: { acceptedQuantity: number; latestOutcome: string | null }[]): Decimal {
